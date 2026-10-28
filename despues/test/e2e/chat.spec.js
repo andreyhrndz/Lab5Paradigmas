@@ -23,7 +23,8 @@ test.describe('UNA Chat — Pruebas End-to-End (E2E) con Playwright', () => {
   });
 
   test('2. Envío y visualización de una imagen real con carga completa', async ({ page }) => {
-    const imageUrl = 'http://localhost:3000/sample.png';
+    const port = process.env.PORT || 3000;
+    const imageUrl = `http://localhost:${port}/sample.png`;
     await page.getByPlaceholder('Username').fill('FotografoE2E');
     await page.getByPlaceholder('Escriba un mensaje').fill(imageUrl);
     await page.getByRole('button', { name: 'Send' }).click();
