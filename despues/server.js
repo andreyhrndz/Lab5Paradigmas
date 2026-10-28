@@ -1,6 +1,7 @@
 // Servidor UNA Chat — Express + Socket.IO (despues)
 
 var validation = require('./libs/unalib');
+var path = require('path');
 var express = require('express');
 var app = express();
 var http = require('http').Server(app);
@@ -8,9 +9,9 @@ var io = require('socket.io')(http);
 var port = process.env.PORT || 3000;
 
 // Servir la interfaz web del chat y archivos estáticos
-app.use(express.static(__dirname + '/public'));
+app.use(express.static(path.resolve(__dirname, 'public')));
 app.get('/', function(req, res){
-  res.sendFile(__dirname + '/index.html');
+  res.sendFile(path.resolve(__dirname, 'index.html'));
 });
 
 // Gestión de conexiones en tiempo real vía WebSockets

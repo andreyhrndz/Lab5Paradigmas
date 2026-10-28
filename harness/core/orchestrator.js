@@ -114,10 +114,15 @@ class Orchestrator {
         const redTestResult = await judge.generateRedTests(specData, worktreePath, options.testGeneratorFn);
 
         // Comprobar empíricamente que la prueba inicial esté en ROJO (RED)
+        const mainNm = path.resolve(this.repoRoot, 'despues', 'node_modules');
+        const wtNm = path.resolve(worktreePath, 'despues', 'node_modules');
+        const nodePathEnv = [wtNm, mainNm, process.env.NODE_PATH].filter(Boolean).join(path.delimiter);
+
         const redRun = spawnSync('npm', ['--prefix', 'despues', 'run', 'test:unit'], {
           cwd: worktreePath,
           encoding: 'utf-8',
-          shell: true
+          shell: true,
+          env: { ...process.env, NODE_PATH: nodePathEnv }
         });
 
         const isInitiallyRed = redRun.status !== 0;
@@ -192,11 +197,15 @@ class Orchestrator {
         }
 
         // 2. Ejecutar suites de pruebas en el worktree
+        const mainNm = path.resolve(this.repoRoot, 'despues', 'node_modules');
+        const wtNm = path.resolve(worktreePath, 'despues', 'node_modules');
+        const nodePathEnv = [wtNm, mainNm, process.env.NODE_PATH].filter(Boolean).join(path.delimiter);
+
         const testRes = spawnSync('npm', ['--prefix', 'despues', 'run', 'test:all'], {
           cwd: worktreePath,
           encoding: 'utf-8',
           shell: true,
-          env: { ...process.env, PORT: String(state.port) }
+          env: { ...process.env, PORT: String(state.port), NODE_PATH: nodePathEnv }
         });
 
         if (testRes.status !== 0) {
