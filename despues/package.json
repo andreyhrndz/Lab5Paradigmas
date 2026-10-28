@@ -1,0 +1,23 @@
+{
+  "name": "despues",
+  "version": "1.0.0",
+  "description": "UNA Chat — Versión asegurada con testing automatizado",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "mocha test/test.js test/unit/**/*.test.js",
+    "test:unit": "mocha test/test.js test/unit/**/*.test.js",
+    "test:integration": "mocha test/integration/**/*.test.js",
+    "test:e2e": "playwright test --project=chromium",
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e"
+  },
+  "dependencies": {
+    "express": "*",
+    "socket.io": "*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2",
+    "mocha": "^12.0.3",
+    "socket.io-client": "^4.8.1"
+  }
+}
