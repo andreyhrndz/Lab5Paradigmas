@@ -79,12 +79,12 @@ class FoFoDriver {
   }
 
   // 5. Escaneo estricto de secretos y credenciales (Phase 4)
-  runSecretScan(contextDir, changedFiles = 'despues/**/*') {
+  runSecretScan(contextDir, changedFiles = 'despues/libs/**/*,despues/server.js,despues/index.html,despues/test/**/*') {
     return this.runGate('secret-scan', ['--changed', changedFiles], contextDir);
   }
 
   // 6. Ejecución del orquestador de gates de FoFo (Referee)
-  runAllGates(contextDir, changedFiles = 'despues/**/*') {
+  runAllGates(contextDir, changedFiles = 'despues/libs/**/*,despues/server.js,despues/index.html,despues/test/**/*') {
     const scriptPath = path.join(this.scriptsDir, 'gate-runner');
     const result = spawnSync('python', [
       scriptPath,

@@ -9,17 +9,29 @@ class PRGenerator {
   }
 
   resolveGhCli() {
-    // Probar gh en PATH
     try {
       execSync('gh --version', { stdio: 'pipe' });
       return 'gh';
     } catch (e) {
-      // Probar ruta estándar de Windows
       const defaultWinPath = 'C:\\Program Files\\GitHub CLI\\gh.exe';
       if (fs.existsSync(defaultWinPath)) {
         return `"${defaultWinPath}"`;
       }
       return null;
+    }
+  }
+
+  isGhAuthenticated() {
+    if (!this.ghPath) return false;
+    try {
+      const res = spawnSync(this.ghPath, ['auth', 'status'], {
+        cwd: this.repoRoot,
+        encoding: 'utf-8',
+        shell: true
+      });
+      return res.status === 0;
+    } catch (e) {
+      return false;
     }
   }
 
@@ -64,7 +76,7 @@ ${verdictsList || '- Todos los gates de trazabilidad, integridad y escaneo de se
   }
 
   async checkExistingPr(branchName) {
-    if (!this.ghPath) return null;
+    if (!this.ghPath || !this.isGhAuthenticated()) return null;
 
     try {
       const res = spawnSync(this.ghPath, ['pr', 'list', '--head', branchName, '--json', 'url,number,title,state'], {
@@ -99,10 +111,21 @@ ${verdictsList || '- Todos los gates de trazabilidad, integridad y escaneo de se
 
     if (!this.ghPath) {
       return {
-        success: true,
+        success: false,
+        authenticated: false,
         method: 'file-fallback',
         prFile: prFilePath,
-        message: 'gh CLI no disponible. Metadatos de PR generados en PULL_REQUEST.md'
+        message: 'gh CLI no está instalada en el sistema. Metadatos de PR generados en PULL_REQUEST.md'
+      };
+    }
+
+    if (!this.isGhAuthenticated()) {
+      return {
+        success: false,
+        authenticated: false,
+        method: 'file-fallback',
+        prFile: prFilePath,
+        message: 'gh CLI detectada pero no autenticada ("gh auth login" requerido). Metadatos de PR guardados en PULL_REQUEST.md'
       };
     }
 
@@ -118,6 +141,7 @@ ${verdictsList || '- Todos los gates de trazabilidad, integridad y escaneo de se
         if (prs && prs.length > 0) {
           return {
             success: true,
+            authenticated: true,
             method: 'existing',
             prUrl: prs[0].url,
             message: `PR existente encontrado: ${prs[0].url}`
@@ -148,6 +172,7 @@ ${verdictsList || '- Todos los gates de trazabilidad, integridad y escaneo de se
         const prUrl = urlMatch ? urlMatch[0] : res.stdout.trim();
         return {
           success: true,
+          authenticated: true,
           method: 'gh-cli',
           prUrl,
           message: `Pull Request creado exitosamente: ${prUrl}`
@@ -155,9 +180,10 @@ ${verdictsList || '- Todos los gates de trazabilidad, integridad y escaneo de se
       } else {
         return {
           success: false,
+          authenticated: false,
           error: res.stderr || res.stdout,
           prFile: prFilePath,
-          message: 'Error de autenticación o red al invocar gh pr create. Metadatos guardados en PULL_REQUEST.md'
+          message: 'Error al invocar gh pr create. Metadatos guardados en PULL_REQUEST.md'
         };
       }
     } catch (err) {

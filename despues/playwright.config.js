@@ -1,6 +1,8 @@
 // @ts-check
 const { defineConfig, devices } = require('@playwright/test');
 
+const port = process.env.PORT || 3000;
+
 module.exports = defineConfig({
   testDir: './test/e2e',
   timeout: 30000,
@@ -13,13 +15,13 @@ module.exports = defineConfig({
     ['html', { outputFolder: 'playwright-report', open: 'never' }]
   ],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: `http://localhost:${port}`,
     trace: 'retain-on-failure',
     screenshot: 'on',
   },
   webServer: {
     command: 'node server.js',
-    url: 'http://localhost:3000',
+    url: `http://localhost:${port}`,
     reuseExistingServer: true,
     timeout: 15000,
   },

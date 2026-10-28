@@ -11,7 +11,7 @@ const PRGenerator = require('./pr-generator');
 const AgentAdapter = require('../agents/agent-adapter');
 
 class Orchestrator {
-  constructor(repoRoot = null) {
+  constructor(repoRoot = null, options = {}) {
     this.repoRoot = repoRoot || process.cwd();
     this.portAllocator = new PortAllocator();
     this.stateManager = new StateManager(path.resolve(this.repoRoot, '.harness', 'jobs'));
@@ -19,7 +19,7 @@ class Orchestrator {
     this.openspecDriver = new OpenSpecDriver(this.repoRoot);
     this.fofoDriver = new FoFoDriver();
     this.prGenerator = new PRGenerator(this.repoRoot);
-    this.agentAdapter = new AgentAdapter();
+    this.agentAdapter = new AgentAdapter(options);
   }
 
   async runJob(reqId, specData = {}, options = {}) {
@@ -54,13 +54,18 @@ class Orchestrator {
       // FASE 0: Especificación y Diseño con OpenSpec
       // -------------------------------------------------------------
       if (['pending', 'specifying'].includes(state.status)) {
-        this.stateManager.transition(jobId, 'specifying', 'Generando propuesta y especificaciones con OpenSpec');
+        state = this.stateManager.transition(jobId, 'specifying', 'Generando propuesta y especificaciones con OpenSpec', {
+          fofoVerdicts: state.fofoVerdicts
+        });
 
         // Manejo de ambigüedad de negocio
         if (specData.isAmbiguous) {
           state.isBlocked = true;
           state.blockReason = specData.ambiguityReason || 'Criterio pendiente de aclaración con el usuario';
-          this.stateManager.transition(jobId, 'blocked', `Bloqueo por duda de negocio: ${state.blockReason}`);
+          state = this.stateManager.transition(jobId, 'blocked', `Bloqueo por duda de negocio: ${state.blockReason}`, {
+            isBlocked: true,
+            blockReason: state.blockReason
+          });
 
           // Generar PR borrador si hay cambios revisables
           this.prGenerator.createPullRequest(state, specData, true);
@@ -86,8 +91,11 @@ class Orchestrator {
       // -------------------------------------------------------------
       // FASE 1 y 2: Judge Agent — Intenciones de prueba y Pruebas en Rojo
       // -------------------------------------------------------------
+      let redErrorOutput = '';
       if (['specifying', 'testing-red'].includes(state.status)) {
-        this.stateManager.transition(jobId, 'testing-red', 'Judge derivando intenciones y escribiendo pruebas rojas');
+        state = this.stateManager.transition(jobId, 'testing-red', 'Judge derivando intenciones y escribiendo pruebas rojas', {
+          fofoVerdicts: state.fofoVerdicts
+        });
 
         const judge = this.agentAdapter.getJudge();
 
@@ -105,6 +113,24 @@ class Orchestrator {
         // Generar pruebas rojas (Phase 2)
         const redTestResult = await judge.generateRedTests(specData, worktreePath, options.testGeneratorFn);
 
+        // Comprobar empíricamente que la prueba inicial esté en ROJO (RED)
+        const redRun = spawnSync('npm', ['--prefix', 'despues', 'run', 'test:unit'], {
+          cwd: worktreePath,
+          encoding: 'utf-8',
+          shell: true
+        });
+
+        const isInitiallyRed = redRun.status !== 0;
+        redErrorOutput = redRun.stderr || redRun.stdout;
+
+        state.fofoVerdicts.push({
+          gate: 'redgreen-gate-red',
+          status: isInitiallyRed ? 'pass' : 'fail',
+          summary: isInitiallyRed
+            ? 'Prueba en ROJO verificada: falla por ausencia de implementación'
+            : 'Fallo TDD: la prueba pasó en verde antes de implementar el código'
+        });
+
         // Congelar y bloquear las pruebas con FoFo test-lock
         const lockRes = this.fofoDriver.writeTestLock(worktreePath);
         state.fofoVerdicts.push({
@@ -117,17 +143,21 @@ class Orchestrator {
           throw new Error(`[FoFo Gate Error] Fallo al escribir TEST-LOCK.json: ${lockRes.stderr || lockRes.stdout}`);
         }
 
-        this.stateManager.transition(jobId, 'tests-locked', 'Pruebas congeladas y protegidas contra manipulación');
+        state = this.stateManager.transition(jobId, 'tests-locked', 'Pruebas congeladas y protegidas contra manipulación', {
+          fofoVerdicts: state.fofoVerdicts
+        });
       }
 
       // -------------------------------------------------------------
       // FASE 3: Author Agent — Implementación a Verde
       // -------------------------------------------------------------
       if (['tests-locked', 'implementing'].includes(state.status)) {
-        this.stateManager.transition(jobId, 'implementing', 'Author implementando cambios en código productivo');
+        state = this.stateManager.transition(jobId, 'implementing', 'Author implementando cambios en código productivo', {
+          fofoVerdicts: state.fofoVerdicts
+        });
 
         const author = this.agentAdapter.getAuthor();
-        await author.implement(specData, worktreePath, options.implementorFn);
+        await author.implement(specData, worktreePath, options.implementorFn, redErrorOutput);
 
         // COMPROBACIÓN CRÍTICA DE FOFO: Verificar que el Author NO modificó las pruebas bloqueadas
         const lockVerify = this.fofoDriver.verifyTestLock(worktreePath);
@@ -146,7 +176,9 @@ class Orchestrator {
       // FASE 4: Referee — Verificación Completa y Gates
       // -------------------------------------------------------------
       if (['implementing', 'verifying'].includes(state.status)) {
-        this.stateManager.transition(jobId, 'verifying', 'Referee ejecutando gates de seguridad y suites completas');
+        state = this.stateManager.transition(jobId, 'verifying', 'Referee ejecutando gates de seguridad y suites completas', {
+          fofoVerdicts: state.fofoVerdicts
+        });
 
         // 1. Escaneo de secretos
         const secretRes = this.fofoDriver.runSecretScan(worktreePath);
@@ -184,7 +216,9 @@ class Orchestrator {
       // FASE 5: Generación de Pull Request
       // -------------------------------------------------------------
       if (['verifying', 'pr-ready'].includes(state.status)) {
-        this.stateManager.transition(jobId, 'pr-ready', 'Preparando y creando Pull Request');
+        state = this.stateManager.transition(jobId, 'pr-ready', 'Preparando y creando Pull Request', {
+          fofoVerdicts: state.fofoVerdicts
+        });
 
         // Hacer commit de los cambios en la rama del worktree
         try {
@@ -202,8 +236,10 @@ class Orchestrator {
         state.prUrl = prResult.prUrl || null;
         state.metadata.prDetails = prResult;
 
-        this.stateManager.transition(jobId, 'completed', 'Trabajo completado exitosamente y PR listo', {
-          prUrl: state.prUrl
+        state = this.stateManager.transition(jobId, 'completed', 'Trabajo completado exitosamente y PR listo', {
+          prUrl: state.prUrl,
+          fofoVerdicts: state.fofoVerdicts,
+          metadata: state.metadata
         });
       }
 
@@ -219,7 +255,6 @@ class Orchestrator {
   }
 
   async runBatch(reqList, options = {}) {
-    const results = [];
     const promises = reqList.map((req) => {
       const spec = typeof req === 'string' ? { reqId: req } : req;
       return this.runJob(spec.reqId, spec, options);

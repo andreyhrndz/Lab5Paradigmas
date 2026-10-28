@@ -38,25 +38,23 @@ class WorktreeManager {
   }
 
   linkOrInstallDeps(worktreePath) {
-    // Si la carpeta despues existe en el worktree pero no tiene node_modules,
-    // hacer link simbólico o copia rápida desde el root para agilizar ejecuciones
     const mainNodeModules = path.resolve(this.repoRoot, 'despues', 'node_modules');
     const targetNodeModules = path.resolve(worktreePath, 'despues', 'node_modules');
 
     if (fs.existsSync(mainNodeModules) && !fs.existsSync(targetNodeModules)) {
       try {
-        // En Windows, junction es confiable sin requerir privilegios elevados de admin
-        if (process.platform === 'win32') {
-          execSync(`cmd /c mklink /J "${targetNodeModules}" "${mainNodeModules}"`, { stdio: 'pipe' });
-        } else {
-          fs.symlinkSync(mainNodeModules, targetNodeModules, 'junction');
-        }
-      } catch (e) {
-        // Fallback a npm install si falla el junction
+        fs.symlinkSync(mainNodeModules, targetNodeModules, 'junction');
+      } catch (symlinkErr) {
         try {
-          execSync('npm --prefix despues install', { cwd: worktreePath, stdio: 'pipe' });
-        } catch (installErr) {
-          console.warn(`[WorktreeManager] Advertencia instalando dependencias en worktree: ${installErr.message}`);
+          if (process.platform === 'win32') {
+            execSync(`cmd /c mklink /J "${targetNodeModules}" "${mainNodeModules}"`, { stdio: 'pipe' });
+          }
+        } catch (mklinkErr) {
+          try {
+            execSync('npm --prefix despues install', { cwd: worktreePath, stdio: 'pipe' });
+          } catch (installErr) {
+            console.warn(`[WorktreeManager] Advertencia instalando dependencias en worktree: ${installErr.message}`);
+          }
         }
       }
     }
