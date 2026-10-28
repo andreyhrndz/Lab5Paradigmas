@@ -8,10 +8,10 @@ var http = require('http').Server(app);
 var io = require('socket.io')(http);
 var port = process.env.PORT || 3000;
 
-// Servir la interfaz web del chat y archivos estáticos
-app.use(express.static(path.resolve(__dirname, 'public')));
+// Servir la interfaz web del chat y archivos estáticos (permitiendo rutas en carpetas de worktree)
+app.use(express.static(path.resolve(__dirname, 'public'), { dotfiles: 'allow' }));
 app.get('/', function(req, res){
-  res.sendFile(path.resolve(__dirname, 'index.html'));
+  res.sendFile(path.resolve(__dirname, 'index.html'), { dotfiles: 'allow' });
 });
 
 // Gestión de conexiones en tiempo real vía WebSockets
