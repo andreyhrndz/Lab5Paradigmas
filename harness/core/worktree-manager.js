@@ -63,6 +63,28 @@ class WorktreeManager {
   removeWorktree(jobId) {
     const worktreePath = this.getWorktreePath(jobId);
 
+    // CRÍTICO PARA WINDOWS: Desvincular de forma segura cualquier junction de node_modules
+    // antes de remover el worktree, para evitar que fs.rmSync borre el target real
+    const targetNodeModules = path.resolve(worktreePath, 'despues', 'node_modules');
+    const rootNodeModules = path.resolve(worktreePath, 'node_modules');
+
+    for (const juncPath of [targetNodeModules, rootNodeModules]) {
+      if (fs.existsSync(juncPath)) {
+        try {
+          const stat = fs.lstatSync(juncPath);
+          if (stat.isSymbolicLink()) {
+            fs.unlinkSync(juncPath);
+          }
+        } catch (e) {
+          try {
+            if (process.platform === 'win32') {
+              execSync(`cmd /c rmdir "${juncPath}"`, { stdio: 'pipe' });
+            }
+          } catch (e2) {}
+        }
+      }
+    }
+
     try {
       execSync(`git worktree remove "${worktreePath}" --force`, { cwd: this.repoRoot, stdio: 'pipe' });
     } catch (e) {
