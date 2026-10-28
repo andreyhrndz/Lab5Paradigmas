@@ -1,0 +1,402 @@
+#!/usr/bin/env python3
+"""
+selftest — fast unit tests for the FoFo gate internals.
+
+The smoke test (examples/sample-feature/smoke.sh) proves the gates end-to-end as
+black boxes. This complements it: it reaches *inside* the gates and exercises the
+pure decision logic directly — the part most likely to grow a subtle bug — without
+spawning a test suite or a model. Stdlib `unittest` only, no third-party deps, no
+network. Runs in well under a second.
+
+    python3 scripts/selftest          # run all
+    python3 scripts/selftest -v       # verbose
+
+Exit 0 if every test passes, non-zero otherwise — so it can itself be wired as a
+BYO gate (adapter --name selftest -- python3 scripts/selftest) if you want the
+harness to guard its own gates.
+"""
+import contextlib
+import importlib.util
+import os
+import re
+import sys
+import tempfile
+import unittest
+
+SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPTS)
+import gatelib  # noqa: E402
+
+
+@contextlib.contextmanager
+def _in_dir(path):
+    """Temporarily chdir into `path`, restoring CWD afterward."""
+    prev = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(prev)
+
+
+def load_gate(name):
+    """Import a gate script (no .py extension) as a module without running main()."""
+    path = os.path.join(SCRIPTS, name)
+    spec = importlib.util.spec_from_loader(
+        "fofo_gate_" + name.replace("-", "_"),
+        importlib.machinery.SourceFileLoader("fofo_gate_" + name.replace("-", "_"), path),
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+flake = load_gate("flake-gate")
+diffbudget = load_gate("diff-budget")
+separation = load_gate("separation-gate")
+trace = load_gate("trace-gate")
+secretscan = load_gate("secret-scan")
+testlock = load_gate("test-lock")
+oversight = load_gate("oversight-integrity")
+depsgate = load_gate("deps-gate")
+specadapter = load_gate("spec-adapter")
+speclint = load_gate("spec-lint")
+evalgate = load_gate("eval-gate")
+trajectory = load_gate("trajectory-judge")
+
+
+class TestGatelib(unittest.TestCase):
+    def test_split_patterns_handles_comma_space_and_repeats(self):
+        self.assertEqual(
+            gatelib.split_patterns(["a.js, b.js", "  c.js "]),
+            ["a.js", "b.js", "c.js"],
+        )
+
+    def test_split_patterns_empty(self):
+        self.assertEqual(gatelib.split_patterns([]), [])
+        self.assertEqual(gatelib.split_patterns(None), [])
+
+    def test_expand_changed_globs_and_dedupes(self):
+        # chdir into the temp dir so the bare glob resolves there, not in CWD
+        # (expand_changed tries the raw pattern against CWD before the rooted one).
+        with tempfile.TemporaryDirectory() as d, _in_dir(d):
+            for n in ("one.py", "two.py", "note.txt"):
+                with open(os.path.join(d, n), "w") as fh:
+                    fh.write("x\n")
+            got = gatelib.expand_changed(["*.py", "one.py"], root=".")
+            self.assertEqual(sorted(os.path.basename(p) for p in got), ["one.py", "two.py"])
+
+    def test_expand_changed_walks_directories(self):
+        # chdir in so the bare "test" dir resolves here, not against an unrelated CWD.
+        with tempfile.TemporaryDirectory() as d, _in_dir(d):
+            os.makedirs("test")
+            with open(os.path.join("test", "a_test.js"), "w") as fh:
+                fh.write("1\n")
+            got = gatelib.expand_changed(["test"], root=".")
+            self.assertEqual([os.path.basename(p) for p in got], ["a_test.js"])
+
+    def test_gate_options_missing_returns_empty(self):
+        self.assertEqual(gatelib.gate_options({}, "nope"), {})
+        self.assertEqual(gatelib.gate_options({"gates": {"x": {"k": 1}}}, "x"), {"k": 1})
+
+    def test_emit_exit_codes_map_from_status(self):
+        self.assertEqual(gatelib.STATUS_EXIT["pass"], 0)
+        self.assertEqual(gatelib.STATUS_EXIT["fail"], 1)
+        self.assertEqual(gatelib.STATUS_EXIT["escalate"], 2)
+        self.assertEqual(gatelib.STATUS_EXIT["skip"], 3)
+
+
+class TestFlakeGate(unittest.TestCase):
+    def test_all_pass_is_deterministic(self):
+        status, _ = flake.classify([True, True, True])
+        self.assertEqual(status, "pass")
+
+    def test_all_fail_is_stable_red(self):
+        status, summary = flake.classify([False, False])
+        self.assertEqual(status, "pass")
+        self.assertIn("red", summary)
+
+    def test_mixed_outcomes_is_flaky(self):
+        status, summary = flake.classify([True, False, True])
+        self.assertEqual(status, "fail")
+        self.assertIn("flaky", summary)
+
+    def test_single_run_cannot_judge(self):
+        status, _ = flake.classify([True])
+        self.assertEqual(status, "skip")
+
+
+class TestDiffBudget(unittest.TestCase):
+    def test_sum_numstat_adds_and_deletes(self):
+        out = "10\t2\tsrc/a.py\n3\t0\tsrc/b.py\n"
+        self.assertEqual(diffbudget.sum_numstat(out), 15)
+
+    def test_sum_numstat_skips_binary(self):
+        out = "-\t-\tassets/logo.png\n5\t5\tsrc/c.py\n"
+        self.assertEqual(diffbudget.sum_numstat(out), 10)
+
+    def test_sum_numstat_ignores_garbage_lines(self):
+        self.assertEqual(diffbudget.sum_numstat("not numstat\n\n"), 0)
+
+    def test_count_file_lines(self):
+        with tempfile.TemporaryDirectory() as d:
+            p1 = os.path.join(d, "a.txt")
+            p2 = os.path.join(d, "b.txt")
+            with open(p1, "w") as fh:
+                fh.write("l1\nl2\nl3\n")      # 3 lines
+            with open(p2, "w") as fh:
+                fh.write("only\nno-newline")  # 2 lines, last unterminated
+            self.assertEqual(diffbudget.count_file_lines([p1, p2]), 5)
+
+
+class TestSeparationParse(unittest.TestCase):
+    def test_yaml_subset(self):
+        units = separation.parse_units(
+            "units:\n  - unit: validator\n    tests_by: judge\n    code_by: author\n")
+        self.assertEqual(units, [{"unit": "validator", "tests_by": "judge", "code_by": "author"}])
+
+    def test_json_form(self):
+        units = separation.parse_units('{"units": [{"unit": "p", "tests_by": "j", "code_by": "j"}]}')
+        self.assertEqual(units[0]["tests_by"], units[0]["code_by"])
+
+
+class TestTraceCollect(unittest.TestCase):
+    def test_collect_requirement_ids_from_headings(self):
+        import re
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as fh:
+            fh.write("### REQ-001: Title\nAcceptance: x\n\nProse REQ-999 inline only.\n- REQ-002: bullet\n")
+            name = fh.name
+        try:
+            ids = trace.collect_requirement_ids(name, re.compile(r"REQ-\d+"))
+            self.assertIn("REQ-001", ids)
+            self.assertIn("REQ-002", ids)
+            self.assertNotIn("REQ-999", ids)  # inline prose mention is not a declaration
+        finally:
+            os.unlink(name)
+
+
+class TestSecretScanPatterns(unittest.TestCase):
+    def test_high_patterns_match_aws_and_pem(self):
+        names = {n: rx for n, rx, _sev in secretscan.HIGH_PATTERNS}
+        self.assertTrue(names["aws-access-key-id"].search('k = "AKIA1234567890ABCDEF"'))
+        self.assertTrue(names["private-key-header"].search("-----BEGIN RSA PRIVATE KEY-----"))
+        self.assertIsNone(names["aws-access-key-id"].search("AKIA-too-short"))
+
+    def test_assign_re_extracts_quoted_literal(self):
+        m = secretscan.ASSIGN_RE.search('api_key = "abcdefghijklmnopqrstuvwx"')
+        self.assertIsNotNone(m)
+        self.assertEqual(len(m.group(1)), 24)
+
+    def test_assign_re_ignores_non_secret_identifiers(self):
+        self.assertIsNone(secretscan.ASSIGN_RE.search('username = "alice"'))
+
+    def test_is_binary_detects_null_byte(self):
+        self.assertTrue(secretscan.is_binary("abc\x00def"))
+        self.assertFalse(secretscan.is_binary("plain text"))
+
+
+class TestTestLock(unittest.TestCase):
+    def test_compute_and_compare_roundtrip(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "a.test.js")
+            with open(p, "w") as fh:
+                fh.write("it('x', () => {});\n")
+            hashes = testlock.compute_hashes([p], d)
+            self.assertEqual(list(hashes), ["a.test.js"])
+            self.assertEqual(testlock.compare_lock(hashes, hashes), ([], [], []))
+
+    def test_compare_detects_modified_missing_new(self):
+        locked = {"a.test.js": "aaa", "b.test.js": "bbb"}
+        current = {"a.test.js": "CHANGED", "c.test.js": "ccc"}
+        modified, missing, new = testlock.compare_lock(locked, current)
+        self.assertEqual(modified, ["a.test.js"])
+        self.assertEqual(missing, ["b.test.js"])
+        self.assertEqual(new, ["c.test.js"])
+
+    def test_hash_changes_with_content(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "t.py")
+            with open(p, "w") as fh:
+                fh.write("x = 1\n")
+            h1 = testlock.hash_file(p)
+            with open(p, "a") as fh:
+                fh.write("# weakened\n")
+            self.assertNotEqual(h1, testlock.hash_file(p))
+
+
+class TestOversightIntegrity(unittest.TestCase):
+    def test_matches_basename_anywhere_in_tree(self):
+        got = oversight.match_protected(
+            ["src/app.py", "config/policy.json", "gates.config"],
+            oversight.DEFAULT_PROTECTED)
+        self.assertEqual(got, ["config/policy.json", "gates.config"])
+
+    def test_glob_patterns_match(self):
+        got = oversight.match_protected(["PROVENANCE.yaml", "TEST-LOCK.json", "notes.md"],
+                                        oversight.DEFAULT_PROTECTED)
+        self.assertEqual(got, ["PROVENANCE.yaml", "TEST-LOCK.json"])
+
+    def test_clean_paths_do_not_match(self):
+        self.assertEqual(oversight.match_protected(["src/a.py", "test/a_test.py"],
+                                                   oversight.DEFAULT_PROTECTED), [])
+
+
+class TestDepsParsers(unittest.TestCase):
+    def test_package_json_all_dep_sections(self):
+        text = '{"dependencies": {"express": "^4"}, "devDependencies": {"jest": "^29"}}'
+        self.assertEqual(depsgate.parse_package_json(text), {"express", "jest"})
+
+    def test_package_json_garbage_is_empty(self):
+        self.assertEqual(depsgate.parse_package_json("not json"), set())
+
+    def test_requirements_txt_strips_specifiers_and_comments(self):
+        text = "requests>=2.0  # http\nflask==3.0\n-r base.txt\nnumpy[extra]~=1.26\n"
+        self.assertEqual(depsgate.parse_requirements_txt(text), {"requests", "flask", "numpy"})
+
+    def test_pyproject_array_and_poetry_table(self):
+        text = ('[project]\ndependencies = ["httpx>=0.27", "pydantic"]\n'
+                '[tool.poetry.dependencies]\npython = "^3.11"\nrich = "*"\n')
+        self.assertEqual(depsgate.parse_pyproject_toml(text), {"httpx", "pydantic", "rich"})
+
+    def test_go_mod_block_and_single(self):
+        text = ("module x\nrequire github.com/pkg/errors v0.9.1\n"
+                "require (\n\tgolang.org/x/text v0.14.0\n)\n")
+        self.assertEqual(depsgate.parse_go_mod(text),
+                         {"github.com/pkg/errors", "golang.org/x/text"})
+
+    def test_cargo_toml_sections_only(self):
+        text = ('[package]\nname = "mycrate"\n[dependencies]\nserde = "1"\n'
+                '[dev-dependencies]\ntempfile = "3"\n')
+        self.assertEqual(depsgate.parse_cargo_toml(text), {"serde", "tempfile"})
+
+    def test_gemfile(self):
+        self.assertEqual(depsgate.parse_gemfile('source "x"\ngem "rails"\n  gem \'pry\'\n'),
+                         {"rails", "pry"})
+
+
+class TestSpecAdapter(unittest.TestCase):
+    KIRO = ("## Requirements\n\n### Requirement 1\n\n"
+            "**User Story:** As a user, I want to log in, so that I see my data.\n\n"
+            "#### Acceptance Criteria\n\n"
+            "1. WHEN credentials are valid THEN the system SHALL create a session\n")
+    SPECKIT = "- **FR-001**: System MUST allow account creation\n"
+    BMAD = "### Functional\n- FR1: The dashboard shall load fast\n- NFR1: The system shall scale\n"
+
+    def test_detect_format(self):
+        self.assertEqual(specadapter.detect_format(self.KIRO), "kiro")
+        self.assertEqual(specadapter.detect_format(self.SPECKIT), "spec-kit")
+        self.assertEqual(specadapter.detect_format(self.BMAD), "bmad")
+        self.assertIsNone(specadapter.detect_format("just prose"))
+
+    def test_kiro_title_from_want_clause_not_raw_line(self):
+        reqs = specadapter.convert_kiro(self.KIRO)
+        self.assertEqual(len(reqs), 1)
+        self.assertEqual(reqs[0]["title"], "to log in")
+        self.assertEqual(len(reqs[0]["acceptance"]), 1)
+        self.assertIn("SHALL create a session", reqs[0]["acceptance"][0])
+
+    def test_spec_kit_keeps_source_id(self):
+        reqs = specadapter.convert_spec_kit(self.SPECKIT)
+        self.assertEqual(reqs[0]["source"], "FR-001")
+        self.assertEqual(reqs[0]["acceptance"], ["System MUST allow account creation"])
+
+    def test_bmad_numbers_fr_and_nfr_sequentially(self):
+        reqs = specadapter.convert_bmad(self.BMAD)
+        self.assertEqual([r["source"] for r in reqs], ["FR1", "NFR1"])
+
+    def test_render_output_satisfies_spec_lint_conventions(self):
+        rendered, warnings = specadapter.render(
+            specadapter.convert_bmad(self.BMAD), "bmad", "prd.md")
+        self.assertIn("### REQ-001:", rendered)
+        self.assertIn("### REQ-002:", rendered)
+        self.assertIn("Acceptance:", rendered)
+        self.assertEqual(warnings, [])
+
+    def test_render_warns_when_no_criterion(self):
+        rendered, warnings = specadapter.render(
+            [{"title": "Vague", "story": None, "acceptance": []}], "kiro", "r.md")
+        self.assertIn("Acceptance: TODO", rendered)
+        self.assertEqual(len(warnings), 1)
+
+
+class TestEvalGate(unittest.TestCase):
+    def test_all_pass_no_score_floor(self):
+        status, summary, _ = evalgate.classify([(True, None)] * 3, 1.0, None)
+        self.assertEqual(status, "pass")
+        self.assertIn("3/3", summary)
+
+    def test_pass_rate_below_floor_fails(self):
+        status, summary, problems = evalgate.classify([(True, None), (False, None)], 1.0, None)
+        self.assertEqual(status, "fail")
+        self.assertTrue(any("pass rate" in p for p in problems))
+
+    def test_partial_rate_floor_allows_flaky_evals(self):
+        status, _, _ = evalgate.classify([(True, None), (True, None), (False, None)], 0.6, None)
+        self.assertEqual(status, "pass")
+
+    def test_mean_score_below_floor_fails(self):
+        status, _, problems = evalgate.classify([(True, 0.8), (True, 0.7)], 1.0, 0.9)
+        self.assertEqual(status, "fail")
+        self.assertTrue(any("mean score" in p for p in problems))
+
+    def test_mean_score_above_floor_passes(self):
+        status, summary, _ = evalgate.classify([(True, 0.95), (True, 0.91)], 1.0, 0.9)
+        self.assertEqual(status, "pass")
+        self.assertIn("mean score", summary)
+
+    def test_min_score_with_no_scores_fails(self):
+        status, _, problems = evalgate.classify([(True, None)], 1.0, 0.9)
+        self.assertEqual(status, "fail")
+        self.assertTrue(any("no score matched" in p for p in problems))
+
+    def test_parse_score_takes_last_match(self):
+        rx = re.compile(r"accuracy: ([0-9.]+)")
+        self.assertEqual(evalgate.parse_score("accuracy: 0.5\naccuracy: 0.9\n", rx), 0.9)
+        self.assertIsNone(evalgate.parse_score("no scores here", rx))
+
+
+class TestTrajectoryJudge(unittest.TestCase):
+    def test_short_transcript_untouched(self):
+        self.assertEqual(trajectory.truncate_transcript("abc", 100), "abc")
+
+    def test_long_transcript_keeps_head_and_tail(self):
+        text = "HEAD" + ("x" * 50000) + "TAIL"
+        out = trajectory.truncate_transcript(text, 3000)
+        self.assertTrue(out.startswith("HEAD"))
+        self.assertTrue(out.endswith("TAIL"))
+        self.assertIn("truncated by trajectory-judge", out)
+        self.assertLess(len(out), 3200)
+
+    def test_high_confidence_signal_fails(self):
+        sig = [{"kind": "test-tampering", "severity": "high", "confidence": 0.9}]
+        self.assertEqual(trajectory.classify(sig, 0.9, 0.6), "fail")
+
+    def test_low_confidence_high_signal_escalates(self):
+        sig = [{"kind": "test-tampering", "severity": "high", "confidence": 0.4}]
+        self.assertEqual(trajectory.classify(sig, 0.9, 0.6), "escalate")
+
+    def test_med_signal_escalates(self):
+        sig = [{"kind": "misreporting", "severity": "med", "confidence": 0.9}]
+        self.assertEqual(trajectory.classify(sig, 0.9, 0.6), "escalate")
+
+    def test_clean_confident_passes(self):
+        self.assertEqual(trajectory.classify([], 0.9, 0.6), "pass")
+
+    def test_clean_but_unconfident_escalates(self):
+        self.assertEqual(trajectory.classify([], 0.3, 0.6), "escalate")
+
+
+class TestSpecLintEars(unittest.TestCase):
+    def test_ears_line_matches(self):
+        self.assertTrue(speclint.EARS_RE.search(
+            "WHEN the user submits a valid email THEN the system SHALL send a link"))
+        self.assertTrue(speclint.EARS_RE.search(
+            "while a session is idle the system shall invalidate it"))
+
+    def test_plain_must_prose_does_not_match(self):
+        self.assertIsNone(speclint.EARS_RE.search("The parser must reject empty input."))
+        self.assertIsNone(speclint.EARS_RE.search("If unsure, ask the operator."))
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2 if "-v" in sys.argv else 1)
