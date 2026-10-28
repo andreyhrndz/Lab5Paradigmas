@@ -1,111 +1,186 @@
-// modulo de ejemplo.
+// Módulo de validación y seguridad — UNA Lib (despues)
 
 module.exports = {
 
+  // Sanitización de entidades HTML para neutralizar inyecciones de código (XSS)
+  sanitizeHtml: function (str) {
+    if (typeof str !== 'string') return '';
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/javascript:/gi, '');
+  },
 
-    // logica que valida si un telefono esta correcto...
-    is_valid_phone: function (phone) {
-      // inicializacion lazy
-      var isValid = false;
-      // expresion regular copiada de StackOverflow
-      var re = /^[+]*[(]{0,1}[0-9]{1,4}[)]{0,1}[-\s\./0-9]*$/i;
-  
-      // validacion Regex
-      try {
-        isValid = re.test(phone);
-      } catch (e) {
-        console.log(e);
-      } finally {
-          return isValid;
-      }
-      // fin del try-catch block
-    },
-  
-    is_valid_url_image: function (url) {
-  
-      // inicializacion lazy
-      var isValid = false;
-      // expresion regular copiada de StackOverflow
-      var re = /(http(s?):)([/|.|\w|\s|-])*\.(?:jpg|gif|png|jpeg|bmp)/i;
-  
-      // validacion Regex
-      try {
-        isValid = re.test(phone);
-      } catch (e) {
-        console.log(e);
-      } finally {
-          return isValid;
-      }
-      // fin del try-catch block
-    },
-  
-    is_valid_yt_video: function (url) {
-  
-      // inicializacion lazy
-      var isValid = false;
-      // expresion regular copiada de StackOverflow
-      var re = /^(?:https?:\/\/)?(?:www\.)?(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})?$/i;
-  
-      // validacion Regex
-      try {
-        isValid = re.test(phone);
-      } catch (e) {
-        console.log(e);
-      } finally {
-          return isValid;
-      }
-      // fin del try-catch block
-    },
-  
-    getYTVideoId: function(url){
-  
-      return url.match(/(?:https?:\/{2})?(?:w{3}\.)?youtu(?:be)?\.(?:com|be)(?:\/watch\?v=|\/)([^\s&]+)/)[1];
-    },
-  
-    getEmbeddedCode: function (url){
-      var id = this.getYTVideoId(url);
-      var code = '<iframe width="560" height="315" src="https://www.youtube.com/embed/'+id+ '" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
-      return code;
-    },
-  
-    getImageTag: function(url){
-      var tag = '<img src="'+url+'" style="max-height: 400px;max-width: 400px;">';
-      return tag;
-    },
-  
-    validateMessage: function(msg){
-      // Handle invalid input
-      if (!msg || typeof msg !== 'string') {
-        return JSON.stringify({ mensaje: '' });
-      }
-
-      try {
-        var obj = JSON.parse(msg);
-  
-      if(this.is_valid_url_image(obj.mensaje)){
-        console.log("Es una imagen!")
-        obj.mensaje = this.getImageTag(obj.mensaje);
-      }
-      else if(this.is_valid_yt_video(obj.mensaje)){
-        console.log("Es un video!")
-        obj.mensaje = this.getEmbeddedCode(obj.mensaje);
-      }
-      else{
-        console.log("Es un texto!")
-      }
-      
-      return JSON.stringify(obj);
-      } catch (e) {
-        console.log('Error processing message:', e);
-        return JSON.stringify({ mensaje: msg }); // Return original message on error
-      }
+  // Validación y normalización de color hexadecimal para prevenir inyecciones CSS
+  sanitizeColor: function (color) {
+    if (typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color.trim())) {
+      return color.trim();
     }
-  
-  
-  
-    
-    
-  
-  // fin del modulo
-  };
-  
+    return '#000000'; // Color por defecto seguro
+  },
+
+  // Validación y sanitización de nombre de usuario
+  sanitizeName: function (nombre) {
+    if (typeof nombre !== 'string' || !nombre.trim()) {
+      return 'Anonimo';
+    }
+    return this.sanitizeHtml(nombre.trim());
+  },
+
+  // Lógica que valida si un teléfono está correcto
+  is_valid_phone: function (phone) {
+    if (!phone || typeof phone !== 'string') {
+      return false;
+    }
+    var isValid = false;
+    var re = /^[+]*[(]{0,1}[0-9]{1,4}[)]{0,1}[-\s\./0-9]*$/i;
+    try {
+      isValid = re.test(phone.trim());
+    } catch (e) {
+      console.log('Error en is_valid_phone:', e);
+    } finally {
+      return isValid;
+    }
+  },
+
+  // Validación de URLs de imágenes
+  is_valid_url_image: function (url) {
+    if (!url || typeof url !== 'string') {
+      return false;
+    }
+    var trimmed = url.trim();
+
+    // Rechazar esquemas peligrosos o caracteres de escape HTML
+    if (/[<>"'`\s]/.test(trimmed)) {
+      return false;
+    }
+    if (/^(?:javascript|data|vbscript|file):/i.test(trimmed)) {
+      return false;
+    }
+
+    // Requiere protocolo HTTP o HTTPS estricto y extensión de imagen soportada
+    var re = /^https?:\/\/[^\s<>"'`]+\.(?:jpg|jpeg|png|gif|bmp|webp)(?:\?[^\s<>"'`]*)?$/i;
+    try {
+      return re.test(trimmed);
+    } catch (e) {
+      console.log('Error en is_valid_url_image:', e);
+      return false;
+    }
+  },
+
+  // Validación de URLs de videos de YouTube
+  is_valid_yt_video: function (url) {
+    if (!url || typeof url !== 'string') {
+      return false;
+    }
+    var trimmed = url.trim();
+
+    // Rechazar esquemas peligrosos o caracteres de escape HTML
+    if (/[<>"'`\s]/.test(trimmed)) {
+      return false;
+    }
+    if (/^(?:javascript|data|vbscript|file):/i.test(trimmed)) {
+      return false;
+    }
+
+    // Acepta youtube.com/watch?v=ID, youtu.be/ID y youtube.com/embed/ID con ID de 11 caracteres alfanuméricos
+    var re = /^(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[?&][^\s<>"'`]*)?$/i;
+    try {
+      return re.test(trimmed);
+    } catch (e) {
+      console.log('Error en is_valid_yt_video:', e);
+      return false;
+    }
+  },
+
+  // Extracción segura del Video ID de YouTube
+  getYTVideoId: function (url) {
+    if (!this.is_valid_yt_video(url)) {
+      return '';
+    }
+    try {
+      var match = url.trim().match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+      return match && match[1] ? match[1] : '';
+    } catch (e) {
+      return '';
+    }
+  },
+
+  // Código seguro para incrustar reproductor de YouTube
+  getEmbeddedCode: function (url) {
+    var id = this.getYTVideoId(url);
+    if (!id) return '';
+    return '<iframe width="560" height="315" src="https://www.youtube.com/embed/' + id + '" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+  },
+
+  // Etiqueta segura para imagen
+  getImageTag: function (url) {
+    if (!this.is_valid_url_image(url)) return '';
+    var safeUrl = url.trim().replace(/"/g, '&quot;');
+    return '<img src="' + safeUrl + '" style="max-height: 400px;max-width: 400px;">';
+  },
+
+  // Método principal de saneamiento y clasificación
+  validateMessage: function (msg) {
+    var defaultResponse = {
+      nombre: 'Anonimo',
+      mensaje: '',
+      color: '#000000',
+      tipo: 'text'
+    };
+
+    if (!msg) {
+      return JSON.stringify(defaultResponse);
+    }
+
+    if (typeof msg !== 'string') {
+      return JSON.stringify(defaultResponse);
+    }
+
+    var obj;
+    try {
+      obj = JSON.parse(msg);
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+        obj = { mensaje: String(msg) };
+      }
+    } catch (e) {
+      // Cadena de texto plano o JSON malformado
+      return JSON.stringify({
+        nombre: 'Anonimo',
+        mensaje: this.sanitizeHtml(msg),
+        color: '#000000',
+        tipo: 'text'
+      });
+    }
+
+    // Normalización de campos
+    var rawMensaje = typeof obj.mensaje === 'string' ? obj.mensaje.trim() : (obj.mensaje != null ? String(obj.mensaje).trim() : '');
+    var safeNombre = this.sanitizeName(obj.nombre);
+    var safeColor = this.sanitizeColor(obj.color);
+
+    // Detección y clasificación segura
+    if (this.is_valid_url_image(rawMensaje)) {
+      obj.tipo = 'image';
+      obj.url = rawMensaje;
+      obj.mensaje = this.getImageTag(rawMensaje);
+    } else if (this.is_valid_yt_video(rawMensaje)) {
+      var videoId = this.getYTVideoId(rawMensaje);
+      obj.tipo = 'video';
+      obj.videoId = videoId;
+      obj.url = 'https://www.youtube.com/embed/' + videoId;
+      obj.mensaje = this.getEmbeddedCode(rawMensaje);
+    } else {
+      obj.tipo = 'text';
+      obj.mensaje = this.sanitizeHtml(rawMensaje);
+    }
+
+    obj.nombre = safeNombre;
+    obj.color = safeColor;
+
+    return JSON.stringify(obj);
+  }
+
+};

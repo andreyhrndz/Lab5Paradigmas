@@ -1,71 +1,135 @@
 <!doctype html>
-<html>
+<html lang="es">
   <head>
+    <meta charset="utf-8">
     <title>Chat Socket.IO UNA</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { font: 13px Helvetica, Arial; }
-      form { background: #000; padding: 3px; position: fixed; bottom: 0; width: 100%; }
-      form input { border: 0; padding: 10px;}
-      form button { width: 10%; background: rgb(130, 224, 255);  border: none; padding: 10px; }
-      #messages { list-style-type: none; margin: 0; padding: 0; }
-      #messages li { padding: 5px 10px; }
+      form { background: #000; padding: 3px; position: fixed; bottom: 0; width: 100%; display: flex; }
+      form input { border: 0; padding: 10px; }
+      form button { width: 10%; background: rgb(130, 224, 255); border: none; padding: 10px; cursor: pointer; font-weight: bold; }
+      #messages { list-style-type: none; margin: 0; padding: 0; margin-bottom: 40px; }
+      #messages li { padding: 8px 12px; word-wrap: break-word; }
       #messages li:nth-child(odd) { background: #eee; }
-      #messages { margin-bottom: 40px }
-      #nombre, #m { display: inline-block;}
-      #m {width: 69%; margin-right: 4px;}
-      #nombre {width: 20%}
+      #nombre { width: 20%; margin-right: 4px; }
+      #m { width: 70%; margin-right: 4px; flex-grow: 1; }
+      img.chat-media { max-height: 400px; max-width: 400px; display: block; margin-top: 5px; border-radius: 4px; }
+      iframe.chat-media { display: block; margin-top: 5px; max-width: 100%; border-radius: 4px; }
     </style>
   </head>
   <body>
     <ul id="messages"></ul>
     <form action="">
-      <input id="nombre" autocomplete="off" placeholder="Username"/>
-      <input id="m" autocomplete="off" placeholder="Escriba un mensaje" /><button>Send</button>
+      <input id="nombre" autocomplete="off" placeholder="Username" />
+      <input id="m" autocomplete="off" placeholder="Escriba un mensaje" />
+      <button type="submit">Send</button>
     </form>
     <script src="https://cdn.socket.io/4.7.2/socket.io.js"></script>
     <script src="https://code.jquery.com/jquery-1.11.1.js"></script>
     <script>
+      var colorHexTxt = "";
 
-    var colorHexTxt = "";
-
-    // genera colores aleatorios en hexadeximal
-    function getRandomColor() {
+      // Genera colores aleatorios en hexadecimal seguro
+      function getRandomColor() {
         var letters = '0123456789ABCDEF';
         var color = '#';
         for (var i = 0; i < 6; i++) {
           color += letters[Math.floor(Math.random() * 16)];
         }
-
         return color;
-     }
+      }
+
+      function isValidHexColor(color) {
+        return typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color.trim());
+      }
+
+      function isValidHttpUrl(url) {
+        try {
+          var parsed = new URL(url);
+          return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+        } catch (e) {
+          return false;
+        }
+      }
 
       $(function () {
         var socket = io();
 
-        // emite evento al servidor
-        
-        $('form').submit(function(){
-            var nombreTxt = $('#nombre').val() || "Anomimo";
-            var mensajeTxt = $('#m').val();
+        $('form').submit(function (e) {
+          e.preventDefault();
+          var nombreTxt = $('#nombre').val() || "Anonimo";
+          var mensajeTxt = $('#m').val();
 
-            if (colorHexTxt == "") {
-                colorHexTxt = getRandomColor();
-            }
+          if (colorHexTxt === "") {
+            colorHexTxt = getRandomColor();
+          }
 
-            var jsonMsg = { nombre: nombreTxt, mensaje: mensajeTxt, color: colorHexTxt };
-            socket.emit('Evento-Mensaje-Server', JSON.stringify(jsonMsg));
-            $('#m').val('');
-            return false;
+          var jsonMsg = {
+            nombre: nombreTxt,
+            mensaje: mensajeTxt,
+            color: colorHexTxt
+          };
+
+          socket.emit('Evento-Mensaje-Server', JSON.stringify(jsonMsg));
+          $('#m').val('');
+          return false;
         });
 
-        // ... (resto del código) ...
+        // Recepción y renderizado estrictamente seguro de mensajes
+        socket.on('Evento-Mensaje-Server', function (msg) {
+          var msgJson;
+          try {
+            msgJson = typeof msg === 'string' ? JSON.parse(msg) : msg;
+          } catch (e) {
+            console.error('Error al parsear mensaje JSON:', e);
+            return;
+          }
 
-        socket.on('Evento-Mensaje-Server', function(msg){
-            var msgJson = JSON.parse(msg);
-            var mensajeDisplay = "<b style='color:"+ msgJson.color +"'>" + msgJson.nombre + "</b>: " + msgJson.mensaje;
-            $('#messages').append($('<li>').html(mensajeDisplay));
-            window.scrollTo(0, document.body.scrollHeight);
+          if (!msgJson || typeof msgJson !== 'object') {
+            return;
+          }
+
+          var $li = $('<li>');
+
+          // 1. Renderizado seguro del nombre de usuario mediante .text()
+          var safeName = msgJson.nombre || 'Anonimo';
+          var $nombreEl = $('<b>').text(safeName);
+
+          // 2. Asignación segura del color mediante .css() validado
+          if (isValidHexColor(msgJson.color)) {
+            $nombreEl.css('color', msgJson.color);
+          } else {
+            $nombreEl.css('color', '#000000');
+          }
+
+          $li.append($nombreEl).append(document.createTextNode(': '));
+
+          // 3. Renderizado de contenido: NUNCA se utiliza .html() con entradas de usuario
+          if (msgJson.tipo === 'image' && msgJson.url && isValidHttpUrl(msgJson.url)) {
+            var $img = $('<img>');
+            $img.attr('src', msgJson.url);
+            $img.attr('alt', 'Imagen compartida');
+            $img.addClass('chat-media');
+            $li.append($img);
+          } else if (msgJson.tipo === 'video' && msgJson.videoId && /^[a-zA-Z0-9_-]{11}$/.test(msgJson.videoId)) {
+            var $iframe = $('<iframe>');
+            $iframe.attr('src', 'https://www.youtube.com/embed/' + msgJson.videoId);
+            $iframe.attr('width', '560');
+            $iframe.attr('height', '315');
+            $iframe.attr('frameborder', '0');
+            $iframe.attr('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
+            $iframe.attr('allowfullscreen', 'true');
+            $iframe.addClass('chat-media');
+            $li.append($iframe);
+          } else {
+            // Texto seguro asignado explícitamente mediante .text()
+            var $texto = $('<span>').text(msgJson.mensaje || '');
+            $li.append($texto);
+          }
+
+          $('#messages').append($li);
+          window.scrollTo(0, document.body.scrollHeight);
         });
 
       });
