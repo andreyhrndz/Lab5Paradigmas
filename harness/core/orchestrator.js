@@ -118,8 +118,8 @@ class Orchestrator {
         const wtNm = path.resolve(worktreePath, 'despues', 'node_modules');
         const nodePathEnv = [wtNm, mainNm, process.env.NODE_PATH].filter(Boolean).join(path.delimiter);
 
-        const redRun = spawnSync('npm', ['--prefix', 'despues', 'run', 'test:unit'], {
-          cwd: worktreePath,
+        const redRun = spawnSync('npm', ['run', 'test:unit'], {
+          cwd: path.resolve(worktreePath, 'despues'),
           encoding: 'utf-8',
           shell: true,
           env: { ...process.env, NODE_PATH: nodePathEnv }
@@ -201,8 +201,8 @@ class Orchestrator {
         const wtNm = path.resolve(worktreePath, 'despues', 'node_modules');
         const nodePathEnv = [wtNm, mainNm, process.env.NODE_PATH].filter(Boolean).join(path.delimiter);
 
-        const testRes = spawnSync('npm', ['--prefix', 'despues', 'run', 'test:all'], {
-          cwd: worktreePath,
+        const testRes = spawnSync('npm', ['run', 'test:all'], {
+          cwd: path.resolve(worktreePath, 'despues'),
           encoding: 'utf-8',
           shell: true,
           env: { ...process.env, PORT: String(state.port), NODE_PATH: nodePathEnv }
