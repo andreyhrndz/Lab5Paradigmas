@@ -32,6 +32,7 @@ blob-report/
 playwright/.cache/
 
 # Runtime del Harness y Worktrees temporales
+worktrees/
 .worktrees/
 .harness/jobs/
 .harness/test_concurrent_jobs/

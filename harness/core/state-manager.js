@@ -106,6 +106,11 @@ class StateManager {
       throw new Error(`[StateManager] No se encontró el trabajo ${jobId}`);
     }
 
+    // Garantía estricta de ciclo de vida: Un trabajo bloqueado o fallido jamás puede marcarse como 'completed'
+    if (nextStatus === 'completed' && (state.isBlocked || state.status === 'blocked' || state.status === 'failed')) {
+      throw new Error(`[StateManager Security] Transición ilegal rechazada: Un trabajo en estado "${state.status}" (bloqueado o fallido) no puede transicionar a "completed".`);
+    }
+
     const previousStatus = state.status;
     state.status = nextStatus;
     state.history.push({

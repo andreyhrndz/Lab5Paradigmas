@@ -145,4 +145,117 @@ describe('Harness Autónomo — Verificación de Concurrencia Real (3 Worktrees 
       assert(!fs.existsSync(wt.path), `El worktree ${wt.jobId} debe haber sido eliminado de disco`);
     }
   });
+
+  it('6. Debe demostrar avance concurrente simultáneo de 3 trabajos en el Orquestador con solapamiento temporal', async function () {
+    this.timeout(60000);
+    const Orchestrator = require('../core/orchestrator');
+    const orch = new Orchestrator(testRoot);
+
+    const activeJobs = new Set();
+    let maxConcurrentInFlight = 0;
+
+    // Barrera de sincronización para asegurar que los 3 trabajos coincidan en ejecución activa
+    const barrier = {
+      target: 3,
+      current: 0,
+      resolvers: [],
+      async wait() {
+        this.current++;
+        if (this.current >= this.target) {
+          this.resolvers.forEach(r => r());
+          return;
+        }
+        return new Promise(resolve => this.resolvers.push(resolve));
+      }
+    };
+
+    const reqIds = ['REQ-201', 'REQ-202', 'REQ-203'];
+    const jobPromises = reqIds.map(async (reqId, index) => {
+      const jobId = `par-job-${index + 1}-${Date.now()}`;
+      const branchName = `feat/test-par-${index + 1}-${Date.now()}`;
+
+      const specData = {
+        reqId,
+        title: `Prueba de concurrencia ${reqId}`,
+        summary: `Función concurrente ${reqId}`,
+        description: `El sistema debe avanzar este requerimiento en paralelo.`,
+        acceptance: `unalib.dummy_${index + 1}() debe retornar true`,
+        targetFunction: `dummy_${index + 1}`,
+        scenarios: [{ name: 'Concurrencia', given: 'Sistema activo', when: 'Invocación', then: 'Retorna true' }]
+      };
+
+      const options = {
+        jobId,
+        branchName,
+        testScript: 'test:unit',
+        testGeneratorFn: () => {
+          return `// @req: ${reqId}
+const assert = require('assert');
+const unalib = require('../../libs/unalib');
+describe('${reqId}', function () {
+  it('debe validar la funcion dummy_${index + 1}', function () {
+    assert.strictEqual(typeof unalib.dummy_${index + 1}, 'function', 'Debe existir la función');
+  });
+});`;
+        },
+        implementorFn: async (spec, worktreePath) => {
+          // Registrar trabajo activo
+          activeJobs.add(jobId);
+          maxConcurrentInFlight = Math.max(maxConcurrentInFlight, activeJobs.size);
+
+          // Sincronizar en barrera para demostrar concurrencia real de 3 trabajos en simultáneo
+          await barrier.wait();
+          maxConcurrentInFlight = Math.max(maxConcurrentInFlight, activeJobs.size);
+
+          await new Promise(r => setTimeout(r, 200));
+
+          const unalibPath = path.join(worktreePath, 'despues', 'libs', 'unalib.js');
+          let code = fs.readFileSync(unalibPath, 'utf-8');
+          if (!code.includes(`dummy_${index + 1}:`)) {
+            code = code.replace(
+              'module.exports = {',
+              `module.exports = {\n  dummy_${index + 1}: function() { return true; },`
+            );
+            fs.writeFileSync(unalibPath, code, 'utf-8');
+          }
+          activeJobs.delete(jobId);
+        }
+      };
+
+      const startTime = Date.now();
+      const state = await orch.runJob(reqId, specData, options);
+      const endTime = Date.now();
+
+      // Limpieza del worktree y rama creada
+      try {
+        orch.cleanJob(jobId);
+        execSync(`git branch -D ${branchName}`, { cwd: testRoot, stdio: 'pipe' });
+      } catch (e) {}
+
+      return { jobId, reqId, state, startTime, endTime };
+    });
+
+    const results = await Promise.all(jobPromises);
+
+    // 1. Todos los trabajos deben haber completado exitosamente
+    assert.strictEqual(results.length, 3);
+    for (const res of results) {
+      assert.strictEqual(res.state.status, 'completed', `El trabajo ${res.jobId} debió completarse`);
+      assert(res.state.port >= 3000, `Puerto ${res.state.port} asignado correctamente`);
+    }
+
+    // 2. Demostración de concurrencia: El pico de trabajos simultáneos en vuelo debe ser 3
+    assert.strictEqual(maxConcurrentInFlight, 3, 'Los 3 trabajos deben haber estado en ejecución activa simultáneamente');
+
+    // 3. Demostración de solapamiento temporal: max(startTimes) < min(endTimes)
+    const startTimes = results.map(r => r.startTime);
+    const endTimes = results.map(r => r.endTime);
+    const latestStart = Math.max(...startTimes);
+    const earliestEnd = Math.min(...endTimes);
+
+    assert(
+      latestStart < earliestEnd,
+      `Debe existir solapamiento temporal entre los 3 trabajos (último inicio: ${latestStart} < primer fin: ${earliestEnd})`
+    );
+  });
 });

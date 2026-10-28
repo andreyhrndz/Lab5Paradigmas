@@ -15,7 +15,7 @@ class PRGenerator {
     } catch (e) {
       const defaultWinPath = 'C:\\Program Files\\GitHub CLI\\gh.exe';
       if (fs.existsSync(defaultWinPath)) {
-        return `"${defaultWinPath}"`;
+        return defaultWinPath;
       }
       return null;
     }
@@ -27,7 +27,7 @@ class PRGenerator {
       const res = spawnSync(this.ghPath, ['auth', 'status'], {
         cwd: this.repoRoot,
         encoding: 'utf-8',
-        shell: true
+        shell: false
       });
       return res.status === 0;
     } catch (e) {
@@ -82,7 +82,7 @@ ${verdictsList || '- Todos los gates de trazabilidad, integridad y escaneo de se
       const res = spawnSync(this.ghPath, ['pr', 'list', '--head', branchName, '--json', 'url,number,title,state'], {
         cwd: this.repoRoot,
         encoding: 'utf-8',
-        shell: true
+        shell: false
       });
 
       if (res.status === 0 && res.stdout.trim()) {
@@ -109,6 +109,17 @@ ${verdictsList || '- Todos los gates de trazabilidad, integridad y escaneo de se
     const prFilePath = path.join(jobDir, 'PULL_REQUEST.md');
     fs.writeFileSync(prFilePath, `# ${title}\n\n${body}`, 'utf-8');
 
+    // Un trabajo fallido nunca debe publicar un PR activo en GitHub
+    if (jobState.status === 'failed') {
+      return {
+        success: false,
+        authenticated: this.isGhAuthenticated(),
+        method: 'failed-diagnostic',
+        prFile: prFilePath,
+        message: 'Trabajo en estado fallido; PULL_REQUEST.md guardado localmente para diagnóstico sin publicar en GitHub'
+      };
+    }
+
     if (!this.ghPath) {
       return {
         success: false,
@@ -134,7 +145,7 @@ ${verdictsList || '- Todos los gates de trazabilidad, integridad y escaneo de se
       const existing = spawnSync(this.ghPath, ['pr', 'list', '--head', jobState.branchName, '--json', 'url'], {
         cwd: this.repoRoot,
         encoding: 'utf-8',
-        shell: true
+        shell: false
       });
       if (existing.status === 0 && existing.stdout.trim()) {
         const prs = JSON.parse(existing.stdout);
@@ -149,11 +160,11 @@ ${verdictsList || '- Todos los gates de trazabilidad, integridad y escaneo de se
         }
       }
 
-      // Preparar argumentos de creación
+      // Preparar argumentos de creación limpios sin comillas manuales (evitando problemas de escape en Windows)
       const args = [
         'pr', 'create',
-        '--title', `"${title}"`,
-        '--body-file', `"${prFilePath}"`,
+        '--title', title,
+        '--body-file', prFilePath,
         '--head', jobState.branchName,
         '--base', 'main'
       ];
@@ -164,7 +175,7 @@ ${verdictsList || '- Todos los gates de trazabilidad, integridad y escaneo de se
       const res = spawnSync(this.ghPath, args, {
         cwd: this.repoRoot,
         encoding: 'utf-8',
-        shell: true
+        shell: false
       });
 
       if (res.status === 0) {

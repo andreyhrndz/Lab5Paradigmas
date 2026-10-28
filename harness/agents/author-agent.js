@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { spawnAsync } = require('../core/async-process');
 
 class AuthorAgent {
   constructor(options = {}) {
@@ -84,7 +85,7 @@ Devuelve el archivo COMPLETO y ACTUALIZADO de ${targetRelative} con la implement
 Devuelve ÚNICAMENTE el bloque de código envuelto en \`\`\`javascript ... \`\`\`. Sin explicaciones adicionales.`;
 
     try {
-      const res = spawnSync(this.cliPath, ['--print', prompt, '--print-timeout', '120s'], {
+      const res = await spawnAsync(this.cliPath, ['--print', prompt, '--print-timeout', '120s'], {
         encoding: 'utf-8',
         timeout: this.timeout,
         shell: false
@@ -131,8 +132,8 @@ Devuelve ÚNICAMENTE el bloque de código envuelto en \`\`\`javascript ... \`\`\
   /**
    * Ejecuta la suite de pruebas unitarias para validar si el código ya está en verde
    */
-  verifyUnitTests(worktreePath) {
-    const res = spawnSync('npm', ['--prefix', 'despues', 'run', 'test:unit'], {
+  async verifyUnitTests(worktreePath) {
+    const res = await spawnAsync('npm', ['--prefix', 'despues', 'run', 'test:unit'], {
       cwd: worktreePath,
       encoding: 'utf-8',
       shell: true

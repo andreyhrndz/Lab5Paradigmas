@@ -5,7 +5,7 @@ const fs = require('fs');
 class WorktreeManager {
   constructor(repoRoot = null) {
     this.repoRoot = repoRoot || process.cwd();
-    this.worktreesBase = path.resolve(this.repoRoot, '.worktrees');
+    this.worktreesBase = path.resolve(this.repoRoot, 'worktrees');
     if (!fs.existsSync(this.worktreesBase)) {
       fs.mkdirSync(this.worktreesBase, { recursive: true });
     }
@@ -71,10 +71,7 @@ class WorktreeManager {
     for (const juncPath of [targetNodeModules, rootNodeModules]) {
       if (fs.existsSync(juncPath)) {
         try {
-          const stat = fs.lstatSync(juncPath);
-          if (stat.isSymbolicLink()) {
-            fs.unlinkSync(juncPath);
-          }
+          fs.unlinkSync(juncPath);
         } catch (e) {
           try {
             if (process.platform === 'win32') {

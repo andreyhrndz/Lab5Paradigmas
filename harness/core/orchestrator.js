@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { execSync, spawnSync } = require('child_process');
+const { spawnAsync } = require('./async-process');
 
 const PortAllocator = require('./port-allocator');
 const { StateManager } = require('./state-manager');
@@ -9,6 +10,7 @@ const OpenSpecDriver = require('./openspec-driver');
 const FoFoDriver = require('./fofo-driver');
 const PRGenerator = require('./pr-generator');
 const AgentAdapter = require('../agents/agent-adapter');
+const RedValidator = require('./red-validator');
 
 class Orchestrator {
   constructor(repoRoot = null, options = {}) {
@@ -20,6 +22,7 @@ class Orchestrator {
     this.fofoDriver = new FoFoDriver();
     this.prGenerator = new PRGenerator(this.repoRoot);
     this.agentAdapter = new AgentAdapter(options);
+    this.redValidator = new RedValidator(this.repoRoot);
   }
 
   async runJob(reqId, specData = {}, options = {}) {
@@ -112,29 +115,25 @@ class Orchestrator {
 
         // Generar pruebas rojas (Phase 2)
         const redTestResult = await judge.generateRedTests(specData, worktreePath, options.testGeneratorFn);
+        const targetTestFile = redTestResult?.testFilePath || path.resolve(worktreePath, 'despues', 'test', 'unit', `${reqId.toLowerCase()}.test.js`);
 
-        // Comprobar empíricamente que la prueba inicial esté en ROJO (RED)
-        const mainNm = path.resolve(this.repoRoot, 'despues', 'node_modules');
-        const wtNm = path.resolve(worktreePath, 'despues', 'node_modules');
-        const nodePathEnv = [wtNm, mainNm, process.env.NODE_PATH].filter(Boolean).join(path.delimiter);
-
-        const redRun = spawnSync('npm', ['run', 'test:unit'], {
-          cwd: path.resolve(worktreePath, 'despues'),
-          encoding: 'utf-8',
-          shell: true,
-          env: { ...process.env, NODE_PATH: nodePathEnv }
+        // Endurecimiento TDD RED: Validación rigurosa de fallos de aserción vs sintaxis/dependencias/timeout
+        const redVerdict = await this.redValidator.validateRedTest(targetTestFile, worktreePath, {
+          port: state.port
         });
 
-        const isInitiallyRed = redRun.status !== 0;
-        redErrorOutput = redRun.stderr || redRun.stdout;
+        redErrorOutput = redVerdict.rawOutput;
 
         state.fofoVerdicts.push({
           gate: 'redgreen-gate-red',
-          status: isInitiallyRed ? 'pass' : 'fail',
-          summary: isInitiallyRed
-            ? 'Prueba en ROJO verificada: falla por ausencia de implementación'
-            : 'Fallo TDD: la prueba pasó en verde antes de implementar el código'
+          status: redVerdict.isRed ? 'pass' : 'fail',
+          category: redVerdict.category,
+          summary: redVerdict.summary
         });
+
+        if (!redVerdict.isRed) {
+          throw new Error(`[TDD RED Error] Validación en rojo rechazada (${redVerdict.category}): ${redVerdict.summary}`);
+        }
 
         // Congelar y bloquear las pruebas con FoFo test-lock
         const lockRes = this.fofoDriver.writeTestLock(worktreePath);
@@ -196,12 +195,13 @@ class Orchestrator {
           throw new Error(`[FoFo Security Gate] Secretos detectados en el trabajo.`);
         }
 
-        // 2. Ejecutar suites de pruebas en el worktree
+        // 2. Ejecutar suites de pruebas en el worktree de forma asíncrona no bloqueante
         const mainNm = path.resolve(this.repoRoot, 'despues', 'node_modules');
         const wtNm = path.resolve(worktreePath, 'despues', 'node_modules');
         const nodePathEnv = [wtNm, mainNm, process.env.NODE_PATH].filter(Boolean).join(path.delimiter);
 
-        const testRes = spawnSync('npm', ['run', 'test:all'], {
+        const testScript = options.testScript || 'test:all';
+        const testRes = await spawnAsync('npm', ['run', testScript], {
           cwd: path.resolve(worktreePath, 'despues'),
           encoding: 'utf-8',
           shell: true,
@@ -244,6 +244,11 @@ class Orchestrator {
         const prResult = this.prGenerator.createPullRequest(state, specData);
         state.prUrl = prResult.prUrl || null;
         state.metadata.prDetails = prResult;
+
+        // Un trabajo bloqueado o fallido jamás debe marcarse como completed por haber generado PULL_REQUEST.md
+        if (state.isBlocked || state.status === 'blocked' || state.status === 'failed') {
+          return state;
+        }
 
         state = this.stateManager.transition(jobId, 'completed', 'Trabajo completado exitosamente y PR listo', {
           prUrl: state.prUrl,

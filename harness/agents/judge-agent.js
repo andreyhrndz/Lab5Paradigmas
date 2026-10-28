@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { spawnAsync } = require('../core/async-process');
 
 class JudgeAgent {
   constructor(options = {}) {
@@ -129,7 +130,7 @@ INSTRUCCIONES TÉCNICAS OBLIGATORIAS:
 5. Devuelve ÚNICAMENTE el bloque de código JavaScript envuelto en \`\`\`javascript ... \`\`\`. Sin explicaciones adicionales.`;
 
     try {
-      const res = spawnSync(this.cliPath, ['--print', prompt, '--print-timeout', '120s'], {
+      const res = await spawnAsync(this.cliPath, ['--print', prompt, '--print-timeout', '120s'], {
         encoding: 'utf-8',
         timeout: this.timeout,
         shell: false
