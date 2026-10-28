@@ -180,15 +180,18 @@ ${verdictsList || '- Todos los gates de trazabilidad, integridad y escaneo de se
       } else {
         return {
           success: false,
-          authenticated: false,
+          authenticated: true,
+          method: 'gh-cli',
           error: res.stderr || res.stdout,
           prFile: prFilePath,
-          message: 'Error al invocar gh pr create. Metadatos guardados en PULL_REQUEST.md'
+          message: `gh pr create falló: ${(res.stderr || res.stdout || '').trim()}. Metadatos guardados en PULL_REQUEST.md`
         };
       }
     } catch (err) {
       return {
         success: false,
+        authenticated: this.isGhAuthenticated(),
+        method: 'gh-cli',
         error: err.message,
         prFile: prFilePath
       };

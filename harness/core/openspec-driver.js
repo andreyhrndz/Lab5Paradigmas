@@ -20,8 +20,9 @@ class OpenSpecDriver {
   createChangeStructure(changeId, specData, targetRoot = null) {
     const changeDir = this.getChangeDir(changeId, targetRoot);
     const specsDir = path.join(changeDir, 'specs');
+    const capabilityDir = path.join(specsDir, 'chat');
 
-    fs.mkdirSync(specsDir, { recursive: true });
+    fs.mkdirSync(capabilityDir, { recursive: true });
 
     // 1. proposal.md
     const proposalContent = `# Proposal: ${specData.title || changeId}
@@ -39,17 +40,28 @@ ${specData.why || 'Implementación formal mediante OpenSpec para asegurar trazab
 `;
     fs.writeFileSync(path.join(changeDir, 'proposal.md'), proposalContent, 'utf-8');
 
-    // 2. specs/<changeId>.spec.md
-    const specContent = `# Specification: ${specData.title || changeId}
+    // 2. specs/chat/spec.md (con formato formal de deltas y scenarios exigido por OpenSpec CLI)
+    const scenarios = (specData.scenarios && specData.scenarios.length > 0)
+      ? specData.scenarios
+      : [{
+          name: `Validación de ${specData.reqId || changeId}`,
+          given: 'Conexión activa a UNA Chat',
+          when: `Se evalúa el requerimiento ${specData.reqId || changeId}`,
+          then: specData.acceptance || 'Cumple la condición esperada'
+        }];
 
-### ${specData.reqId || changeId}: ${specData.summary || 'Requisito funcional'}
+    const specContent = `# Spec: Chat
+
+## ADDED Requirements
+
+### Requirement: ${specData.reqId || changeId}: ${specData.summary || 'Requisito funcional'}
 ${specData.description || ''}
 
 Acceptance: ${specData.acceptance || 'El sistema debe cumplir el criterio establecido en las pruebas.'}
 
-## Scenarios
-${(specData.scenarios || []).map((s, idx) => `### Scenario ${idx + 1}: ${s.name}\n- Given: ${s.given}\n- When: ${s.when}\n- Then: ${s.then}`).join('\n\n')}
+${scenarios.map((s, idx) => `#### Scenario: ${s.name || `Escenario ${idx + 1}`}\n- Given: ${s.given || 'Dado un entorno preparado'}\n- When: ${s.when || 'Cuando ocurre el evento'}\n- Then: ${s.then || 'Entonces se valida el resultado'}`).join('\n\n')}
 `;
+    fs.writeFileSync(path.join(capabilityDir, 'spec.md'), specContent, 'utf-8');
     fs.writeFileSync(path.join(specsDir, `${changeId}.spec.md`), specContent, 'utf-8');
 
     // 3. design.md
@@ -78,7 +90,7 @@ ${(specData.scenarios || []).map((s, idx) => `### Scenario ${idx + 1}: ${s.name}
     fs.writeFileSync(path.join(changeDir, 'tasks.md'), tasksContent, 'utf-8');
 
     // 5. Generar también SPEC.md en la raíz del contexto para FoFo spec-lint
-    const rootSpecContent = `### ${specData.reqId || changeId}: ${specData.summary || 'Requisito funcional'}
+    const rootSpecContent = `### Requirement: ${specData.reqId || changeId}: ${specData.summary || 'Requisito funcional'}
 ${specData.description || ''}
 Acceptance: ${specData.acceptance || 'El sistema debe cumplir el criterio establecido.'}
 `;
@@ -91,7 +103,7 @@ Acceptance: ${specData.acceptance || 'El sistema debe cumplir el criterio establ
 
   validateChange(changeId, targetRoot = null) {
     const root = targetRoot || this.repoRoot;
-    const result = spawnSync('npx', ['@fission-ai/openspec@latest', 'validate', changeId], {
+    const result = spawnSync('npx', ['--yes', '@fission-ai/openspec', 'validate', changeId], {
       cwd: root,
       encoding: 'utf-8',
       shell: true
