@@ -1,0 +1,3 @@
+### Requirement: REQ-012: Restricción de longitud máxima de mensajes en frontend y backend
+El sistema UNA Chat debe validar y limitar la longitud máxima de cualquier mensaje a 280 caracteres. En el frontend, si un visitante intenta enviar más de 280 caracteres, el sistema no debe agregarlo al transcript, debe mantener el texto del mensaje en el campo para que el usuario pueda editarlo/recortarlo, y debe indicarle que el mensaje es demasiado largo. En el backend, Socket.IO debe rechazar cualquier mensaje que exceda dicha longitud.
+Acceptance: WHEN a visitor activates Send with a message longer than 280 characters THEN the system SHALL NOT add that message to the transcript, SHALL keep the message text in the field, and SHALL tell the visitor the message is too long.

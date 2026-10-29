@@ -1,0 +1,8 @@
+# Generado por fofo-judge
+REQ-012:
+  - intent: "Intento de envío de mensaje de más de 280 caracteres en el frontend"
+    criteria: "El sistema NO agrega el mensaje al transcript, mantiene el texto del mensaje en el campo de entrada y notifica que el mensaje es demasiado largo."
+  - intent: "Intento de inyección directa de mensaje de más de 280 caracteres por Socket.IO en backend"
+    criteria: "El servidor rechaza el mensaje y el cliente B no recibe retransmisión con longitud excesiva."
+  - intent: "Validación lógica unitaria de longitud máxima en unalib"
+    criteria: "Debe rechazar el mensaje o marcarlo inválido por exceso de longitud."

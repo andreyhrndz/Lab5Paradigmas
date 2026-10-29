@@ -1,0 +1,20 @@
+# FoFo Provenance Manifest
+job_id: "req-012-1793235291341"
+timestamp: "2026-10-29T02:49:09.208Z"
+cli_engine: "C:\Users\cuent\AppData\Local\agy\bin\agy.exe"
+real_agent_active: true
+judge:
+  name: "fofo-judge"
+  role: "Judge — Test Requirements & Red Tests Author"
+  files_authored:
+    - "despues/test/unit/req-012.test.js"
+    - "despues/test/integration/req-012.socket.test.js"
+    - "despues/test/e2e/req-012.spec.js"
+author:
+  name: "fofo-author"
+  role: "Author — Production Code Implementer"
+  files_authored:
+    - "despues/libs/unalib.js"
+    - "despues/server.js"
+    - "despues/index.html"
+separation_enforced: true
