@@ -284,8 +284,22 @@ class Orchestrator {
         }
 
         // 3. Crear o registrar Pull Request
-        const generatedPr = this.prGenerator.createPullRequest(state, specData);
-        const prResult = options.mockPrResult ? { ...generatedPr, ...options.mockPrResult } : generatedPr;
+        let prResult;
+        if (options.mockPrResult) {
+          const title = `feat(${reqId.toLowerCase()}): ${specData.title || specData.summary || reqId}`;
+          const body = this.prGenerator.generatePrBody(state, specData);
+          const jobDir = path.resolve(this.repoRoot, '.harness', 'jobs', jobId);
+          if (!fs.existsSync(jobDir)) fs.mkdirSync(jobDir, { recursive: true });
+          const prFilePath = path.join(jobDir, 'PULL_REQUEST.md');
+          fs.writeFileSync(prFilePath, `# ${title}\n\n${body}`, 'utf-8');
+
+          prResult = {
+            prFile: prFilePath,
+            ...options.mockPrResult
+          };
+        } else {
+          prResult = this.prGenerator.createPullRequest(state, specData);
+        }
         state.metadata.prDetails = prResult;
 
         // Comprobar confirmación real de Pull Request con URL válida de GitHub

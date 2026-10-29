@@ -1,18 +1,23 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { execSync } = require('child_process');
 
 const PortAllocator = require('../core/port-allocator');
 const { StateManager } = require('../core/state-manager');
 const WorktreeManager = require('../core/worktree-manager');
 const FoFoDriver = require('../core/fofo-driver');
+const Orchestrator = require('../core/orchestrator');
 
 describe('Harness Autónomo — Verificación de Concurrencia Real (3 Worktrees Simultáneos)', function () {
-  this.timeout(45000);
+  this.timeout(60000);
 
-  const testRoot = path.resolve(__dirname, '..', '..');
-  const jobsDir = path.resolve(testRoot, '.harness', 'test_concurrent_jobs');
+  const originalRepoRoot = path.resolve(__dirname, '..', '..');
+  let isolatedRepoDir;
+  let localBareOrigin;
+  let jobsDir;
+
   let portAllocator;
   let stateManager;
   let worktreeManager;
@@ -24,34 +29,56 @@ describe('Harness Autónomo — Verificación de Concurrencia Real (3 Worktrees 
   let createdWorktrees = [];
 
   before(function () {
-    if (fs.existsSync(jobsDir)) {
-      fs.rmSync(jobsDir, { recursive: true, force: true });
+    this.timeout(30000);
+
+    // 1. Crear repositorio bare local en directorio temporal (simulación de remoto local SIN salida a producción)
+    localBareOrigin = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-bare-origin-'));
+    execSync('git init --bare', { cwd: localBareOrigin, stdio: 'pipe' });
+
+    // 2. Crear repositorio de trabajo aislado clonando localmente sin hardlinks
+    isolatedRepoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-conc-worktree-'));
+    execSync(`git clone --local --no-hardlinks "${originalRepoRoot}" "${isolatedRepoDir}"`, { stdio: 'pipe' });
+
+    // 3. AISLAMIENTO ESTRICTO: Reemplazar remoto 'origin' apuntando exclusivamente al bare local temporal
+    execSync('git remote remove origin', { cwd: isolatedRepoDir, stdio: 'pipe' });
+    execSync(`git remote add origin "${localBareOrigin}"`, { cwd: isolatedRepoDir, stdio: 'pipe' });
+
+    // Publicar la rama de trabajo al remoto local aislado
+    try {
+      execSync('git push -u origin feat/autonomous-harness', { cwd: isolatedRepoDir, stdio: 'pipe' });
+    } catch (e) {
+      // Ignorar si ya está o es rama local
     }
+
+    jobsDir = path.resolve(isolatedRepoDir, '.harness', 'test_concurrent_jobs');
     fs.mkdirSync(jobsDir, { recursive: true });
 
     portAllocator = new PortAllocator(3050, 3100);
     stateManager = new StateManager(jobsDir);
-    worktreeManager = new WorktreeManager(testRoot);
+    worktreeManager = new WorktreeManager(isolatedRepoDir);
     fofoDriver = new FoFoDriver();
   });
 
   after(function () {
-    // Limpieza ordenada
+    // 1. Limpieza de worktrees temporales
     for (const wt of createdWorktrees) {
       try {
         worktreeManager.removeWorktree(wt.jobId);
-      } catch (e) {
-        // Ignorar
-      }
-      try {
-        execSync(`git branch -D ${wt.branch}`, { cwd: testRoot, stdio: 'pipe' });
-      } catch (e) {
-        // Ignorar
-      }
+      } catch (e) {}
     }
-    if (fs.existsSync(jobsDir)) {
-      fs.rmSync(jobsDir, { recursive: true, force: true });
-    }
+
+    // 2. Limpieza de directorios temporales aislados
+    try {
+      if (isolatedRepoDir && fs.existsSync(isolatedRepoDir)) {
+        fs.rmSync(isolatedRepoDir, { recursive: true, force: true });
+      }
+    } catch (e) {}
+
+    try {
+      if (localBareOrigin && fs.existsSync(localBareOrigin)) {
+        fs.rmSync(localBareOrigin, { recursive: true, force: true });
+      }
+    } catch (e) {}
   });
 
   it('1. Debe asignar 3 puertos HTTP únicos e independientes de forma concurrente', async function () {
@@ -69,11 +96,11 @@ describe('Harness Autónomo — Verificación de Concurrencia Real (3 Worktrees 
   it('2. Debe crear y aislar 3 Git worktrees independientes en paralelo sin race conditions', function () {
     const worktreeResults = [];
 
-    // Crear 3 worktrees en ramas separadas
+    // Crear 3 worktrees en ramas separadas dentro del repositorio aislado
     for (let i = 0; i < jobIds.length; i++) {
       const jobId = jobIds[i];
       const branch = branchNames[i];
-      const wtPath = worktreeManager.createWorktree(jobId, branch, 'main');
+      const wtPath = worktreeManager.createWorktree(jobId, branch, 'feat/autonomous-harness');
 
       assert(fs.existsSync(wtPath), `Worktree ${jobId} debe existir en disco: ${wtPath}`);
       assert(fs.existsSync(path.join(wtPath, '.git')), `Worktree ${jobId} debe tener referencia .git`);
@@ -107,12 +134,11 @@ describe('Harness Autónomo — Verificación de Concurrencia Real (3 Worktrees 
       assert.strictEqual(state.reqId, `REQ-CONC-${i + 1}`);
       assert.strictEqual(state.status, 'testing-red');
       assert.strictEqual(state.port, allocatedPorts[i]);
-      assert.strictEqual(state.history.length, 3); // initial + specifying + testing-red
+      assert.strictEqual(state.history.length, 3);
     }
   });
 
   it('4. Debe ejecutar FoFo test-lock independientemente en los 3 worktrees sin interferencia mutua', function () {
-    // Escribir un archivo de prueba diferente en cada worktree
     for (let i = 0; i < createdWorktrees.length; i++) {
       const wt = createdWorktrees[i];
       const testDir = path.join(wt.path, 'despues', 'test', 'unit');
@@ -148,13 +174,13 @@ describe('Harness Autónomo — Verificación de Concurrencia Real (3 Worktrees 
 
   it('6. Debe demostrar avance concurrente simultáneo de 3 trabajos en el Orquestador con solapamiento temporal', async function () {
     this.timeout(60000);
-    const Orchestrator = require('../core/orchestrator');
-    const orch = new Orchestrator(testRoot);
+    // Ejecutar sobre el repositorio aislado temporal sin remoto de producción
+    const orch = new Orchestrator(isolatedRepoDir);
 
     const activeJobs = new Set();
     let maxConcurrentInFlight = 0;
 
-    // Barrera de sincronización para asegurar que los 3 trabajos coincidan en ejecución activa
+    // Barrera de sincronización para asegurar coincidencia simultánea en vuelo
     const barrier = {
       target: 3,
       current: 0,
@@ -187,7 +213,16 @@ describe('Harness Autónomo — Verificación de Concurrencia Real (3 Worktrees 
       const options = {
         jobId,
         branchName,
+        baseBranch: 'feat/autonomous-harness',
         testScript: 'test:unit',
+        // NUNCA hacer push a remotos reales ni llamar a GitHub CLI en pruebas automatizadas
+        skipPush: true,
+        mockPrResult: {
+          success: true,
+          authenticated: true,
+          method: 'gh-cli-mock',
+          prUrl: `https://github.com/mock-org/mock-repo/pull/${index + 201}`
+        },
         testGeneratorFn: () => {
           return `// @req: ${reqId}
 const assert = require('assert');
@@ -226,10 +261,9 @@ describe('${reqId}', function () {
       const state = await orch.runJob(reqId, specData, options);
       const endTime = Date.now();
 
-      // Limpieza del worktree y rama creada
+      // Limpieza local en el repositorio aislado
       try {
         orch.cleanJob(jobId);
-        execSync(`git branch -D ${branchName}`, { cwd: testRoot, stdio: 'pipe' });
       } catch (e) {}
 
       return { jobId, reqId, state, startTime, endTime };
@@ -242,6 +276,7 @@ describe('${reqId}', function () {
     for (const res of results) {
       assert.strictEqual(res.state.status, 'completed', `El trabajo ${res.jobId} debió completarse`);
       assert(res.state.port >= 3000, `Puerto ${res.state.port} asignado correctamente`);
+      assert(res.state.prUrl.includes('/pull/'), 'Debe tener URL simulada de PR');
     }
 
     // 2. Demostración de concurrencia: El pico de trabajos simultáneos en vuelo debe ser 3
