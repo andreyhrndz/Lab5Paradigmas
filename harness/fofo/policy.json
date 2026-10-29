@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "gates": {
+    "spec-lint": {
+      "req_pattern": "REQ-[0-9]{3}",
+      "acceptance_label": "Acceptance:"
+    },
+    "trace-gate": {
+      "test_reqs_file": "TEST-REQS.yaml",
+      "test_glob": [
+        "despues/test/unit/**/*.test.js",
+        "despues/test/**/*.js",
+        "test/**/*.js"
+      ]
+    },
+    "test-lock": {
+      "lock_file": "TEST-LOCK.json",
+      "test_glob": [
+        "despues/test/unit/**/*.test.js",
+        "test/**/*.js"
+      ]
+    },
+    "secret-scan": {
+      "banned_patterns": [
+        "AKIA[0-9A-Z]{16}",
+        "ghp_[0-9a-zA-Z]{36}",
+        "gho_[0-9a-zA-Z]{36}",
+        "glpat-[0-9a-zA-Z\\-_]{20,}",
+        "xox[baprs]-[0-9a-zA-Z\\-_]{10,}"
+      ]
+    },
+    "oversight-integrity": {
+      "protected_paths": [
+        "harness/fofo/gates.config",
+        "harness/fofo/policy.json",
+        "policy.json",
+        "gates.config"
+      ]
+    }
+  }
+}

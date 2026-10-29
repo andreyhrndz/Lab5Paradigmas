@@ -2,6 +2,15 @@
 node_modules/
 */node_modules/
 
+# Python compilado y caches
+__pycache__/
+*/__pycache__/
+**/*__pycache__*/**
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
 # Logs
 logs/
 *.log
@@ -21,6 +30,12 @@ playwright-report/
 test-results/
 blob-report/
 playwright/.cache/
+
+# Runtime del Harness y Worktrees temporales
+worktrees/
+.worktrees/
+.harness/jobs/
+.harness/test_concurrent_jobs/
 
 # Archivos de sistema operativo y editores
 .DS_Store

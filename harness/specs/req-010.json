@@ -1,0 +1,49 @@
+{
+  "reqId": "REQ-010",
+  "title": "Impedir envío y retransmisión de mensajes vacíos o solo espacios",
+  "summary": "Validación en frontend y backend para bloquear mensajes sin contenido significativo",
+  "why": "Evitar spam, mensajes accidentales en blanco y saturación del canal de chat con contenido nulo o whitespace.",
+  "description": "El sistema UNA Chat debe validar que cualquier mensaje enviado contenga texto visible. No se debe permitir el envío desde la interfaz de usuario ni la retransmisión por el servidor si el mensaje está vacío o compuesto exclusivamente por espacios en blanco.",
+  "acceptance": "WHEN a visitor activates Send with an empty or whitespace-only message THEN the system SHALL NOT add a message to the transcript, SHALL keep the message field empty, and SHALL tell the visitor to write something.",
+  "targetFiles": [
+    "despues/libs/unalib.js",
+    "despues/server.js",
+    "despues/index.html"
+  ],
+  "targetFunction": "validateMessage",
+  "scenarios": [
+    {
+      "name": "Intento de envío de mensaje vacío en el frontend",
+      "type": "e2e",
+      "given": "El cliente de chat abierto en el navegador con el campo de mensaje vacío",
+      "when": "El usuario hace clic en el botón Enviar o pulsa Enter",
+      "then": "El sistema NO agrega el mensaje al transcript, mantiene el campo de mensaje vacío y muestra una advertencia solicitando escribir algo."
+    },
+    {
+      "name": "Intento de envío de mensaje compuesto solo de espacios en el frontend",
+      "type": "e2e",
+      "given": "El cliente de chat abierto en el navegador con espacios en blanco en el campo de mensaje",
+      "when": "El usuario envía el formulario",
+      "then": "El sistema NO agrega el mensaje al transcript, limpia el campo de mensaje y solicita al usuario escribir contenido."
+    },
+    {
+      "name": "Intento de inyección directa de mensaje vacío por Socket.IO en el backend",
+      "type": "integration",
+      "given": "Dos clientes conectados al servidor Socket.IO",
+      "when": "El cliente A emite 'Evento-Mensaje-Server' con mensaje vacío o solo espacios",
+      "then": "El servidor Socket.IO rechaza el mensaje y el cliente B no recibe retransmisión de mensaje vacío."
+    },
+    {
+      "name": "Validación lógica unitaria en biblioteca unalib",
+      "type": "unit",
+      "given": "El módulo unalib cargado",
+      "when": "Se invoca validateMessage con JSON conteniendo mensaje vacío o solo espacios",
+      "then": "Debe rechazar la entrada o invalidar el objeto devuelto sin contenido procesable."
+    }
+  ],
+  "testTemplates": {
+    "unit": "// @req: REQ-010\nconst assert = require('assert');\nconst unalib = require('../../libs/unalib');\n\ndescribe('REQ-010 (Unit) — Validación de mensajes vacíos en unalib', function () {\n  it('debe rechazar mensajes con contenido vacío serializado como JSON', function () {\n    const input = JSON.stringify({ mensaje: '', nombre: 'UsuarioTest', color: '#000000' });\n    const rawRes = unalib.validateMessage(input);\n    let parsed = null;\n    try { parsed = typeof rawRes === 'string' ? JSON.parse(rawRes) : rawRes; } catch (e) {}\n    const isRejected = rawRes === false || rawRes === null || (parsed && (parsed.valid === false || !parsed.mensaje || parsed.mensaje.trim() === '' || parsed.error));\n    assert.strictEqual(Boolean(isRejected), true, 'Mensaje vacío en JSON debe ser rechazado');\n  });\n\n  it('debe rechazar mensajes compuestos solo de espacios en blanco', function () {\n    const input = JSON.stringify({ mensaje: '     ', nombre: 'UsuarioTest', color: '#000000' });\n    const rawRes = unalib.validateMessage(input);\n    let parsed = null;\n    try { parsed = typeof rawRes === 'string' ? JSON.parse(rawRes) : rawRes; } catch (e) {}\n    const isRejected = rawRes === false || rawRes === null || (parsed && (parsed.valid === false || !parsed.mensaje || parsed.mensaje.trim() === '' || parsed.error));\n    assert.strictEqual(Boolean(isRejected), true, 'Mensaje con solo espacios debe ser rechazado');\n  });\n});\n",
+    "integration": "// @req: REQ-010\nconst assert = require('assert');\nconst ioClient = require('socket.io-client');\nconst { http, io } = require('../../server');\n\ndescribe('REQ-010 (Integration) — Rechazo de mensajes vacíos en Socket.IO', function () {\n  this.timeout(10000);\n  let port;\n  let serverInstance;\n  let clientA;\n  let clientB;\n\n  before(function (done) {\n    serverInstance = http.listen(0, function () {\n      port = serverInstance.address().port;\n      clientA = ioClient(`http://localhost:${port}`, { transports: ['websocket'], forceNew: true });\n      clientA.on('connect', function () {\n        clientB = ioClient(`http://localhost:${port}`, { transports: ['websocket'], forceNew: true });\n        clientB.on('connect', done);\n      });\n    });\n  });\n\n  after(function (done) {\n    if (clientA && clientA.connected) clientA.disconnect();\n    if (clientB && clientB.connected) clientB.disconnect();\n    io.close(done);\n  });\n\n  it('el servidor no debe retransmitir mensajes con contenido vacío o espacios', function (done) {\n    let receivedInvalid = false;\n    clientB.on('Evento-Mensaje-Server', function (msg) {\n      try {\n        const data = typeof msg === 'string' ? JSON.parse(msg) : msg;\n        if (!data || !data.mensaje || data.mensaje.trim() === '') {\n          receivedInvalid = true;\n        }\n      } catch (e) {}\n    });\n\n    clientA.emit('Evento-Mensaje-Server', JSON.stringify({ mensaje: '   ', nombre: 'TestUser', color: '#111111' }));\n\n    setTimeout(() => {\n      assert.strictEqual(receivedInvalid, false, 'El servidor Socket.IO no debió retransmitir mensaje vacío');\n      done();\n    }, 600);\n  });\n});\n",
+    "e2e": "// @req: REQ-010\nconst { test, expect } = require('@playwright/test');\n\ntest.describe('REQ-010 (E2E) — Validación de mensajes vacíos en navegador', () => {\n  test('no debe agregar al transcript, mantiene campo vacío y notifica escribir algo', async ({ page }) => {\n    await page.goto('/');\n    let dialogMessage = '';\n    page.on('dialog', async dialog => {\n      dialogMessage = dialog.message();\n      await dialog.dismiss();\n    });\n\n    const initialCount = await page.locator('#messages li').count();\n    await page.locator('#nombre').fill('UsuarioTest');\n    await page.locator('#m').fill('   ');\n    await page.locator('button[type=\"submit\"]').click();\n\n    // 1. SHALL NOT add a message to the transcript\n    await expect(page.locator('#messages li')).toHaveCount(initialCount);\n\n    // 2. SHALL keep the message field empty\n    const msgVal = await page.locator('#m').inputValue();\n    expect(msgVal.trim()).toBe('');\n\n    // 3. SHALL tell the visitor to write something\n    const hasDomNotice = (await page.locator('text=/escriba|write|algo|mensaje|empty/i').count()) > 0;\n    const toldVisitor = Boolean(dialogMessage && /escriba|write|algo|mensaje|empty/i.test(dialogMessage)) || hasDomNotice;\n    expect(toldVisitor).toBe(true);\n  });\n});\n"
+  }
+}
