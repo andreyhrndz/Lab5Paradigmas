@@ -20,10 +20,19 @@ io.on('connection', function(socket){
     var validatedMsg = validation.validateMessage(msg);
     try {
       var parsed = typeof validatedMsg === 'string' ? JSON.parse(validatedMsg) : validatedMsg;
-      if (parsed && (parsed.valid === false || parsed.error != null)) {
+      if (
+        !parsed ||
+        parsed.valid === false ||
+        parsed.error != null ||
+        (typeof parsed.mensaje === 'string' && parsed.mensaje.trim() === '') ||
+        (typeof parsed.mensaje === 'string' && parsed.mensaje.length > 280) ||
+        (typeof parsed.nombre === 'string' && parsed.nombre.trim() === '')
+      ) {
         return;
       }
-    } catch (e) {}
+    } catch (e) {
+      return;
+    }
     // Retransmisión del mensaje validado y saneado a todos los clientes
     io.emit('Evento-Mensaje-Server', validatedMsg);
   });

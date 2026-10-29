@@ -1,3 +1,5 @@
-### Requirement: REQ-010: Validación en frontend y backend para bloquear mensajes sin contenido significativo
-El sistema UNA Chat debe validar que cualquier mensaje enviado contenga texto visible. No se debe permitir el envío desde la interfaz de usuario ni la retransmisión por el servidor si el mensaje está vacío o compuesto exclusivamente por espacios en blanco.
-Acceptance: WHEN a visitor activates Send with an empty or whitespace-only message THEN the system SHALL NOT add a message to the transcript, SHALL keep the message field empty, and SHALL tell the visitor to write something.
+# Requerimientos del Sistema UNA Chat — Integración Conjunta
+
+- **REQ-010**: Impedir mensajes vacíos o de solo espacios en blanco tanto en frontend como backend.
+- **REQ-011**: Exigir un nombre de usuario no vacío para participar en el chat, sin asignar valores por defecto anónimos.
+- **REQ-012**: Limitar los mensajes a un máximo estricto de 280 caracteres en frontend y backend.

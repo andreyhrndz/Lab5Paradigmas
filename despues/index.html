@@ -56,15 +56,33 @@
       $(function () {
         var socket = io();
 
-        $('form').submit(function (e) {
+                $('form').submit(function (e) {
           e.preventDefault();
-          if ($('#m').val().trim() === '') {
+
+          // REQ-011: Exigir nombre de usuario no vacío
+          var rawNombre = $('#nombre').val();
+          if (!rawNombre || rawNombre.trim() === '') {
+            $('#nombre').val('');
+            alert('Por favor escriba su nombre');
+            return false;
+          }
+
+          // REQ-010: Impedir mensaje vacío
+          var rawMsg = $('#m').val();
+          if (rawMsg.trim() === '') {
             $('#m').val('');
             alert('Por favor escriba un mensaje');
             return false;
           }
-          var nombreTxt = $('#nombre').val() || "Anonimo";
-          var mensajeTxt = $('#m').val();
+
+          // REQ-012: Limitar a máximo 280 caracteres
+          if (rawMsg.length > 280) {
+            alert('El mensaje es demasiado largo (máximo 280 caracteres)');
+            return false;
+          }
+
+          var nombreTxt = rawNombre.trim();
+          var mensajeTxt = rawMsg;
 
           if (colorHexTxt === "") {
             colorHexTxt = getRandomColor();

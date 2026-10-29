@@ -174,6 +174,13 @@ module.exports = {
       });
     }
 
+    // Exigencia de nombre de usuario válido no vacío
+    if (obj.hasOwnProperty('nombre')) {
+      if (typeof obj.nombre !== 'string' || !obj.nombre.trim()) {
+        return JSON.stringify({ valid: false, error: 'Nombre de usuario requerido' });
+      }
+    }
+
     // Validación de contenido significativo en el objeto
     var rawMensaje = '';
     if (typeof obj.mensaje === 'string') {
@@ -194,6 +201,19 @@ module.exports = {
     }
 
     // Normalización de campos
+    
+    // Validación de longitud máxima (REQ-012: máximo 280 caracteres)
+    if (rawMensaje.length > 280) {
+      return JSON.stringify({
+        valid: false,
+        error: 'El mensaje es demasiado largo (máximo 280 caracteres)',
+        nombre: this.sanitizeName(obj.nombre),
+        mensaje: rawMensaje.slice(0, 280),
+        color: this.sanitizeColor(obj.color),
+        tipo: 'text'
+      });
+    }
+
     var safeNombre = this.sanitizeName(obj.nombre);
     var safeColor = this.sanitizeColor(obj.color);
 

@@ -1,12 +1,18 @@
 {
   "algo": "sha256",
   "files": {
-    "despues/test/e2e/chat.spec.js": "712ec9cfb915d440070fe090f2aa1a839605236d6cf9c0a1cbca98f3c070f2a2",
-    "despues/test/e2e/req-010.spec.js": "ac2a9108451c47cd480003c3855f2aa4cbb9b2c8d3d2c94f4e0f4d89d8cfe9b7",
-    "despues/test/integration/chat.integration.test.js": "0e5d162c4e1bdca57d4b8737762929e35bda98956ab51c50b29142734e45d582",
-    "despues/test/integration/req-010.socket.test.js": "5f3b9b568b8ac6f9f640e0e3eed713bd2b84b2c11b371ef749f0cbad24f85715",
-    "despues/test/test.js": "b9be611027d1f8572b4558959468fa3606860ac660f9ecb5a2260197c8946b4b",
-    "despues/test/unit/req-010.test.js": "b70e7fe5afe5fb9e4910cd2a322924538f7acf43aec44d6071a85b84bbbd3869",
-    "despues/test/unit/unalib.unit.test.js": "1b1982e571509354a1ff0e093fecf2131e388e7095421bc8211a789d82b14e59"
+    "despues\\test\\e2e\\chat.spec.js": "712ec9cfb915d440070fe090f2aa1a839605236d6cf9c0a1cbca98f3c070f2a2",
+    "despues\\test\\e2e\\req-010.spec.js": "8006d6815333db1f40fff5796abf233b8e4e0ba3d074b1a02df45f5a7127213a",
+    "despues\\test\\e2e\\req-011.spec.js": "1a22b7e3472595a7bdb5a3f3a0a31eba28a3a754294be184e4b385976bcd5ec3",
+    "despues\\test\\e2e\\req-012.spec.js": "a1229432cfff62459795eda41e12b06df83a049eb49d2c85fed61e6e868aaaa9",
+    "despues\\test\\integration\\chat.integration.test.js": "0e5d162c4e1bdca57d4b8737762929e35bda98956ab51c50b29142734e45d582",
+    "despues\\test\\integration\\req-010.socket.test.js": "5a5392ac93f11fc65615983768379afd2db1929aef9393c047e908b571b8168c",
+    "despues\\test\\integration\\req-011.socket.test.js": "f9245cb854b497949233885eda9af52b36873b48b23aee4a1ef599512b49c65f",
+    "despues\\test\\integration\\req-012.socket.test.js": "c0c3a3a633aa66bcdbb49725df1f3a93bdfb9d7b44bdf0b6033f5e24a1341f82",
+    "despues\\test\\test.js": "b9be611027d1f8572b4558959468fa3606860ac660f9ecb5a2260197c8946b4b",
+    "despues\\test\\unit\\req-010.test.js": "c4a4c6878c7de0fc55ded51c58be5dc265cee37209ea2f76f5b9454ef2771d17",
+    "despues\\test\\unit\\req-011.test.js": "52885255bbc4016c80113be796c2f8b53cb3065b63d300475fdffac5f819c4d4",
+    "despues\\test\\unit\\req-012.test.js": "e52edd709feac9d99eccd2133824a3f188554ae7d367254e87cf8dbc7f4667ce",
+    "despues\\test\\unit\\unalib.unit.test.js": "1b1982e571509354a1ff0e093fecf2131e388e7095421bc8211a789d82b14e59"
   }
 }
