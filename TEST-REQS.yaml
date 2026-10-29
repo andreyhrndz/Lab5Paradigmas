@@ -1,0 +1,10 @@
+# Generado por fofo-judge
+REQ-010:
+  - intent: "Intento de envío de mensaje vacío en el frontend"
+    criteria: "El sistema NO agrega el mensaje al transcript, mantiene el campo de mensaje vacío y muestra una advertencia solicitando escribir algo."
+  - intent: "Intento de envío de mensaje compuesto solo de espacios en el frontend"
+    criteria: "El sistema NO agrega el mensaje al transcript, limpia el campo de mensaje y solicita al usuario escribir contenido."
+  - intent: "Intento de inyección directa de mensaje vacío por Socket.IO en el backend"
+    criteria: "El servidor Socket.IO rechaza el mensaje y el cliente B no recibe retransmisión de mensaje vacío."
+  - intent: "Validación lógica unitaria en biblioteca unalib"
+    criteria: "Debe rechazar la entrada o invalidar el objeto devuelto sin contenido procesable."

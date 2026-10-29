@@ -58,6 +58,11 @@
 
         $('form').submit(function (e) {
           e.preventDefault();
+          if ($('#m').val().trim() === '') {
+            $('#m').val('');
+            alert('Por favor escriba un mensaje');
+            return false;
+          }
           var nombreTxt = $('#nombre').val() || "Anonimo";
           var mensajeTxt = $('#m').val();
 
@@ -86,7 +91,7 @@
             return;
           }
 
-          if (!msgJson || typeof msgJson !== 'object') {
+          if (!msgJson || typeof msgJson !== 'object' || msgJson.valid === false || msgJson.error) {
             return;
           }
 
