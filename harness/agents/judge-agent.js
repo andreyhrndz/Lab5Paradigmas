@@ -53,32 +53,39 @@ class JudgeAgent {
   }
 
   /**
-   * Invoca a la CLI real de Antigravity (o mock si se especifica) para generar pruebas rojas
+   * Genera pruebas verificables rojas en múltiples niveles:
+   * - Pruebas Unitarias (despues/test/unit/)
+   * - Pruebas de Integración Socket.IO (despues/test/integration/)
+   * - Pruebas de Comportamiento Playwright E2E (despues/test/e2e/)
    */
   async generateRedTests(specData, worktreePath, testGeneratorFn = null) {
-    const testDir = path.join(worktreePath, 'despues', 'test', 'unit');
-    if (!fs.existsSync(testDir)) {
-      fs.mkdirSync(testDir, { recursive: true });
+    const generatedFiles = [];
+    const unitDir = path.join(worktreePath, 'despues', 'test', 'unit');
+    const integrationDir = path.join(worktreePath, 'despues', 'test', 'integration');
+    const e2eDir = path.join(worktreePath, 'despues', 'test', 'e2e');
+
+    for (const dir of [unitDir, integrationDir, e2eDir]) {
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     }
 
-    const testFileName = `${specData.reqId.toLowerCase()}.test.js`;
-    const testFilePath = path.join(testDir, testFileName);
+    const unitFileName = `${specData.reqId.toLowerCase()}.test.js`;
+    const unitFilePath = path.join(unitDir, unitFileName);
 
-    let testCode = '';
+    let unitCode = '';
 
-    // Si se pasa función generadora explícita (p. ej. en pruebas de infraestructura del harness)
+    // 1. Manejo de función generadora directa
     if (typeof testGeneratorFn === 'function') {
-      testCode = testGeneratorFn(specData);
+      unitCode = testGeneratorFn(specData);
+    } else if (specData.testTemplates && specData.testTemplates.unit) {
+      unitCode = specData.testTemplates.unit;
     } else if (specData.testTemplate) {
-      testCode = specData.testTemplate;
+      unitCode = specData.testTemplate;
     } else if (this.cliPath && !this.mockMode) {
-      // Invocación a agente real vía CLI
-      testCode = await this.invokeRealJudgeAgent(specData);
+      unitCode = await this.invokeRealJudgeAgent(specData, 'unit');
     }
 
-    // Fallback defensivo si el agente no devolvió código válido
-    if (!testCode || !testCode.trim()) {
-      testCode = `// @req: ${specData.reqId}
+    if (!unitCode || !unitCode.trim()) {
+      unitCode = `// @req: ${specData.reqId}
 const assert = require('assert');
 const unalib = require('../../libs/unalib');
 
@@ -93,23 +100,46 @@ describe('${specData.reqId} — ${specData.title || "Verificación"}', function 
 `;
     }
 
-    // Asegurar que contenga la etiqueta de trazabilidad FoFo obligatoria
-    if (!testCode.includes(`@req: ${specData.reqId}`)) {
-      testCode = `// @req: ${specData.reqId}\n` + testCode;
+    if (!unitCode.includes(`@req: ${specData.reqId}`)) {
+      unitCode = `// @req: ${specData.reqId}\n` + unitCode;
+    }
+    fs.writeFileSync(unitFilePath, unitCode, 'utf-8');
+    generatedFiles.push(unitFilePath);
+
+    // 2. Pruebas de Integración con Socket.IO si están definidas
+    if (specData.testTemplates && specData.testTemplates.integration) {
+      const socketTestPath = path.join(integrationDir, `${specData.reqId.toLowerCase()}.socket.test.js`);
+      let socketCode = specData.testTemplates.integration;
+      if (!socketCode.includes(`@req: ${specData.reqId}`)) {
+        socketCode = `// @req: ${specData.reqId}\n` + socketCode;
+      }
+      fs.writeFileSync(socketTestPath, socketCode, 'utf-8');
+      generatedFiles.push(socketTestPath);
     }
 
-    fs.writeFileSync(testFilePath, testCode, 'utf-8');
+    // 3. Pruebas End-to-End con Playwright si están definidas
+    if (specData.testTemplates && specData.testTemplates.e2e) {
+      const e2eTestPath = path.join(e2eDir, `${specData.reqId.toLowerCase()}.spec.js`);
+      let e2eCode = specData.testTemplates.e2e;
+      if (!e2eCode.includes(`@req: ${specData.reqId}`)) {
+        e2eCode = `// @req: ${specData.reqId}\n` + e2eCode;
+      }
+      fs.writeFileSync(e2eTestPath, e2eCode, 'utf-8');
+      generatedFiles.push(e2eTestPath);
+    }
 
     return {
-      testFilePath,
-      testFileName,
-      generatedBy: this.cliPath && !this.mockMode ? 'real-agent-cli' : 'fallback-template'
+      testFilePath: unitFilePath,
+      testFileName: unitFileName,
+      generatedFiles,
+      generatedBy: this.cliPath && !this.mockMode ? 'real-agent-cli' : 'spec-templates'
     };
   }
 
-  async invokeRealJudgeAgent(specData) {
+  async invokeRealJudgeAgent(specData, testType = 'unit') {
     const prompt = `Actúa como el agente Judge en una arquitectura FoFo (Agentic SDLC).
-Tu responsabilidad es escribir una suite de pruebas unitarias en JavaScript utilizando Mocha y assert de Node.js.
+Tu responsabilidad es escribir una suite de pruebas en JavaScript para validar un requisito específico.
+Tipo de prueba solicitada: ${testType} (unit = Mocha + assert, integration = Mocha + socket.io-client, e2e = Playwright).
 REGLA DE AISLAMIENTO: No tienes acceso al código productivo existente. Solo debes basarte en el siguiente requisito de la especificación:
 
 ID: ${specData.reqId}
@@ -122,12 +152,9 @@ Función objetivo en unalib: unalib.${specData.targetFunction || 'validateMessag
 INSTRUCCIONES TÉCNICAS OBLIGATORIAS:
 1. Incluye en la primera línea exactamente el comentario de trazabilidad FoFo:
    // @req: ${specData.reqId}
-2. Requiere assert y unalib:
-   const assert = require('assert');
-   const unalib = require('../../libs/unalib');
-3. Escribe un bloque describe('${specData.reqId}', function() { ... }) con casos it(...) que validen estrictamente el requisito.
-4. La prueba DEBE fallar (RED) si la funcionalidad no está implementada.
-5. Devuelve ÚNICAMENTE el bloque de código JavaScript envuelto en \`\`\`javascript ... \`\`\`. Sin explicaciones adicionales.`;
+2. Escribe una prueba rigurosa y formal que valide el criterio de aceptación.
+3. La prueba DEBE fallar (RED) en el estado actual antes de la implementación del Author.
+4. Devuelve ÚNICAMENTE el bloque de código JavaScript envuelto en \`\`\`javascript ... \`\`\`. Sin explicaciones adicionales.`;
 
     try {
       const res = await spawnAsync(this.cliPath, ['--print', prompt, '--print-timeout', '120s'], {
@@ -151,7 +178,6 @@ INSTRUCCIONES TÉCNICAS OBLIGATORIAS:
     if (match && match[1]) {
       return match[1].trim();
     }
-    // Si no tiene fences pero parece código
     if (text.includes('describe(') && text.includes('require(')) {
       return text.trim();
     }

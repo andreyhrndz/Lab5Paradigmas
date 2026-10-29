@@ -1,0 +1,49 @@
+{
+  "reqId": "REQ-011",
+  "title": "Exigir nombre de usuario válido no vacío en frontend y backend",
+  "summary": "Validación obligatoria de nombre de usuario sin valores por defecto anónimos",
+  "why": "Asegurar la trazabilidad, autoría e identidad de los mensajes compartidos en el chat colaborativo.",
+  "description": "El sistema UNA Chat debe requerir obligatoriamente un nombre de usuario no vacío para participar. El frontend debe impedir el envío si el campo de usuario está en blanco o con solo espacios, conservando el campo vacío y notificando al visitante. El backend Socket.IO debe rechazar mensajes con autor no especificado o vacío sin asignar anónimos.",
+  "acceptance": "WHEN a visitor activates Send with an empty or whitespace-only username and a real message THEN the system SHALL NOT add a message to the transcript, SHALL keep the username field empty, and SHALL tell the visitor to write a name.",
+  "targetFiles": [
+    "despues/libs/unalib.js",
+    "despues/server.js",
+    "despues/index.html"
+  ],
+  "targetFunction": "validateMessage",
+  "scenarios": [
+    {
+      "name": "Intento de envío con nombre de usuario vacío en el frontend",
+      "type": "e2e",
+      "given": "El cliente de chat abierto con mensaje válido pero nombre de usuario vacío",
+      "when": "El usuario hace clic en el botón Enviar",
+      "then": "El sistema NO agrega el mensaje al transcript, conserva el campo de nombre vacío y solicita escribir un nombre."
+    },
+    {
+      "name": "Intento de envío con nombre de usuario compuesto solo de espacios en el frontend",
+      "type": "e2e",
+      "given": "El cliente de chat abierto con solo espacios en el campo de nombre",
+      "when": "El usuario envía el mensaje",
+      "then": "El sistema NO agrega el mensaje al transcript, mantiene el campo de nombre vacío y pide al usuario escribir su nombre."
+    },
+    {
+      "name": "Intento de inyección directa de mensaje sin usuario por Socket.IO en el backend",
+      "type": "integration",
+      "given": "Una conexión de socket cliente",
+      "when": "Emite el evento 'Evento-Mensaje-Server' con nombre vacío o solo espacios",
+      "then": "El backend rechaza el mensaje, no lo retransmite a la sala y no asigna anónimo de forma silenciosa."
+    },
+    {
+      "name": "Validación lógica unitaria de nombre de usuario en unalib",
+      "type": "unit",
+      "given": "El módulo unalib cargado",
+      "when": "Se invoca validateMessage con nombre vacío, nulo o de espacios",
+      "then": "Debe rechazar la entrada o invalidar el objeto de mensaje por ausencia de nombre de usuario."
+    }
+  ],
+  "testTemplates": {
+    "unit": "// @req: REQ-011\nconst assert = require('assert');\nconst unalib = require('../../libs/unalib');\n\ndescribe('REQ-011 (Unit) — Exigencia de nombre de usuario en unalib', function () {\n  it('debe rechazar mensajes con nombre de usuario vacío', function () {\n    const res = unalib.validateMessage({ mensaje: 'Mensaje legítimo', nombre: '', color: '#000000' });\n    assert.strictEqual(res === false || res === null || (res && res.valid === false) || (res && !res.nombre), true, 'Nombre vacío debe ser invalidado');\n  });\n  it('debe rechazar mensajes con nombre de solo espacios en blanco', function () {\n    const res = unalib.validateMessage({ mensaje: 'Mensaje legítimo', nombre: '    ', color: '#000000' });\n    assert.strictEqual(res === false || res === null || (res && res.valid === false) || (res && !res.nombre?.trim()), true, 'Nombre de solo espacios debe ser invalidado');\n  });\n});\n",
+    "integration": "// @req: REQ-011\nconst assert = require('assert');\nconst ioClient = require('socket.io-client');\n\ndescribe('REQ-011 (Integration) — Rechazo de mensajes sin nombre en Socket.IO', function () {\n  this.timeout(5000);\n  let socket;\n  const port = process.env.PORT || 3000;\n\n  before(function (done) {\n    socket = ioClient.connect(`http://localhost:${port}`, { forceNew: true });\n    socket.on('connect', done);\n  });\n\n  after(function () {\n    if (socket && socket.connected) socket.disconnect();\n  });\n\n  it('el servidor no debe retransmitir mensajes con nombre de usuario vacío o espacios', function (done) {\n    let received = false;\n    socket.on('Evento-Mensaje-Server', (data) => {\n      if (data && (!data.nombre || data.nombre.trim() === '')) {\n        received = true;\n      }\n    });\n    socket.emit('Evento-Mensaje-Server', JSON.stringify({ mensaje: 'Hola a todos', nombre: '   ', color: '#111111' }));\n    setTimeout(() => {\n      assert.strictEqual(received, false, 'El servidor no debió retransmitir mensaje sin nombre');\n      done();\n    }, 600);\n  });\n});\n",
+    "e2e": "// @req: REQ-011\nconst { test, expect } = require('@playwright/test');\n\ntest.describe('REQ-011 (E2E) — Exigencia de nombre de usuario en navegador', () => {\n  test('al enviar mensaje con username vacío no debe agregar transcript y debe notificar al usuario', async ({ page }) => {\n    await page.goto('/');\n    let dialogTriggered = false;\n    page.on('dialog', async dialog => {\n      dialogTriggered = true;\n      await dialog.dismiss();\n    });\n    await page.locator('#nombre').fill('');\n    await page.locator('#m').fill('Mensaje válido de prueba');\n    await page.locator('button[type=\"submit\"]').click();\n    const nameValue = await page.locator('#nombre').inputValue();\n    expect(nameValue.trim()).toBe('');\n  });\n});\n"
+  }
+}

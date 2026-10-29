@@ -7,6 +7,7 @@ const fs = require('fs');
 const Orchestrator = require('./core/orchestrator');
 const { StateManager } = require('./core/state-manager');
 const IntegrationVerifier = require('./core/integration-verifier');
+const SpecLoader = require('./core/spec-loader');
 
 function printUsage() {
   console.log(`
@@ -14,10 +15,10 @@ Uso: node harness/cli.js <comando> [argumentos]
 
 Comandos disponibles:
   doctor                     Verifica la instalación y prerrequisitos del sistema (Git, Node, Python, OpenSpec, FoFo, gh).
-  run <req-id> [--spec file] Inicia el ciclo autónomo para un requerimiento específico.
+  run <req-id> [--spec file] Inicia el ciclo autónomo para un requerimiento específico cargando su especificación formal.
   status [job-id]            Muestra el estado de una ejecución específica o lista todos los trabajos.
   resume <job-id>            Reanuda un trabajo interrumpido desde su último estado válido.
-  batch <req-1> <req-2> ...  Ejecuta múltiples requerimientos concurrentemente en worktrees aislados.
+  batch <req-1> <req-2> ...  Ejecuta múltiples requerimientos concurrentemente en worktrees aislados cargando sus especificaciones completas.
   integrate <b1> <b2> ...    Verifica la integración coordinada de varias ramas funcionales sin merge a main.
   report                     Presenta el resumen consolidado de estados, evidencias y veredictos de FoFo.
   help                       Muestra esta ayuda.
@@ -137,33 +138,29 @@ async function handleStatus(jobId) {
   }
 }
 
-async function handleRun(reqId, args) {
+async function handleRun(reqId, args = []) {
   if (!reqId) {
     console.error('Error: Debe especificar un identificador de requerimiento (ej: REQ-010).');
     process.exit(1);
   }
 
-  let specData = {
-    reqId,
-    title: `Implementación de ${reqId}`,
-    summary: `Requerimiento funcional ${reqId}`,
-    acceptance: `El sistema debe verificar el comportamiento de ${reqId}`
-  };
-
+  const specLoader = new SpecLoader();
   const specIdx = args.indexOf('--spec');
-  if (specIdx !== -1 && args[specIdx + 1]) {
-    const specFilePath = path.resolve(args[specIdx + 1]);
-    if (fs.existsSync(specFilePath)) {
-      try {
-        const parsed = JSON.parse(fs.readFileSync(specFilePath, 'utf-8'));
-        specData = { ...specData, ...parsed };
-      } catch (e) {
-        console.warn(`[Aviso] No se pudo parsear el archivo spec como JSON. Usando valores por defecto.`);
-      }
-    }
+  const customSpecPath = (specIdx !== -1 && args[specIdx + 1]) ? args[specIdx + 1] : null;
+
+  let specData;
+  try {
+    specData = specLoader.loadSpec(reqId, customSpecPath);
+  } catch (err) {
+    console.error(`[Error de Requisito] ${err.message}`);
+    process.exit(1);
   }
 
   console.log(`\n[Harness] Iniciando ejecución autónoma para ${reqId}...`);
+  console.log(`[Harness] Título: ${specData.title}`);
+  console.log(`[Harness] Criterio de Aceptación: "${specData.acceptance}"`);
+  console.log(`[Harness] Archivos productivos autorizados: ${specData.targetFiles.join(', ')}`);
+
   const orchestrator = new Orchestrator();
   const finalState = await orchestrator.runJob(reqId, specData);
 
@@ -175,18 +172,38 @@ async function handleRun(reqId, args) {
 
 async function handleBatch(reqIds) {
   if (!reqIds || reqIds.length === 0) {
-    console.error('Error: Indique al menos un requerimiento para la ejecución por lotes.');
+    console.error('Error: Indique al menos un requerimiento para la ejecución por lotes (ej: batch REQ-010 REQ-011 REQ-012).');
     process.exit(1);
   }
 
-  console.log(`\n[Harness] Iniciando ejecución por lotes concurrente para: ${reqIds.join(', ')}...`);
+  const specLoader = new SpecLoader();
+  const specs = [];
+
+  // Validar y cargar todos los requerimientos antes de iniciar el batch (rechaza requisitos desconocidos)
+  for (const id of reqIds) {
+    try {
+      const spec = specLoader.loadSpec(id);
+      specs.push(spec);
+    } catch (err) {
+      console.error(`[Error de Requisito en Batch] ${err.message}`);
+      process.exit(1);
+    }
+  }
+
+  console.log(`\n[Harness] Iniciando ejecución por lotes concurrente para ${specs.length} requerimientos:`);
+  for (const s of specs) {
+    console.log(`  - [${s.reqId}] ${s.title}`);
+    console.log(`    Criterio: "${s.acceptance}"`);
+    console.log(`    Archivos autorizados: ${s.targetFiles.join(', ')}`);
+  }
+
   const orchestrator = new Orchestrator();
-  const specs = reqIds.map(id => ({ reqId: id }));
   const results = await orchestrator.runBatch(specs);
 
   console.log('\n=== Resumen de Ejecución Concurrente ===\n');
   for (const res of results) {
     console.log(`- ${res.reqId}: ${res.status} (Rama: ${res.branchName}, Puerto: ${res.port})`);
+    if (res.prUrl) console.log(`  PR: ${res.prUrl}`);
   }
 }
 

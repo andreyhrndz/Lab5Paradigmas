@@ -95,6 +95,7 @@ class Orchestrator {
       // FASE 1 y 2: Judge Agent — Intenciones de prueba y Pruebas en Rojo
       // -------------------------------------------------------------
       let redErrorOutput = '';
+      let redTestResult = null;
       if (['specifying', 'testing-red'].includes(state.status)) {
         state = this.stateManager.transition(jobId, 'testing-red', 'Judge derivando intenciones y escribiendo pruebas rojas', {
           fofoVerdicts: state.fofoVerdicts
@@ -213,10 +214,15 @@ class Orchestrator {
         }
 
         // 3. Registrar procedencia
+        const testFilesToRecord = (redTestResult && Array.isArray(redTestResult.generatedFiles) && redTestResult.generatedFiles.length > 0)
+          ? redTestResult.generatedFiles.map(f => path.relative(worktreePath, f).replace(/\\/g, '/'))
+          : [`despues/test/unit/${reqId.toLowerCase()}.test.js`];
+        const prodFilesToRecord = (specData.targetFiles || ['despues/libs/unalib.js']).map(f => f.replace(/\\/g, '/'));
+
         this.agentAdapter.recordProvenance(
           worktreePath,
-          [`despues/test/unit/${reqId.toLowerCase()}.test.js`],
-          ['despues/libs/unalib.js'],
+          testFilesToRecord,
+          prodFilesToRecord,
           jobId
         );
       }
