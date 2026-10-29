@@ -1,0 +1,12 @@
+{
+  "algo": "sha256",
+  "files": {
+    "despues/test/e2e/chat.spec.js": "712ec9cfb915d440070fe090f2aa1a839605236d6cf9c0a1cbca98f3c070f2a2",
+    "despues/test/e2e/req-011.spec.js": "ae0789fb502db7d1a8b862a9361f2a25ed5d21c069e16ae08719963351eae408",
+    "despues/test/integration/chat.integration.test.js": "0e5d162c4e1bdca57d4b8737762929e35bda98956ab51c50b29142734e45d582",
+    "despues/test/integration/req-011.socket.test.js": "d1a87981f5b29377d92ae2023fba33fdca726aff3120a434a780496066bc8e7a",
+    "despues/test/test.js": "b9be611027d1f8572b4558959468fa3606860ac660f9ecb5a2260197c8946b4b",
+    "despues/test/unit/req-011.test.js": "9e49be18c2ad9e7b8b6ebc4732cfa35229477db28a51b643e2d73f8d92a29a18",
+    "despues/test/unit/unalib.unit.test.js": "1b1982e571509354a1ff0e093fecf2131e388e7095421bc8211a789d82b14e59"
+  }
+}

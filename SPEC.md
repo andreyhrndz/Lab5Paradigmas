@@ -1,0 +1,3 @@
+### Requirement: REQ-011: Validación obligatoria de nombre de usuario sin valores por defecto anónimos
+El sistema UNA Chat debe requerir obligatoriamente un nombre de usuario no vacío para participar. El frontend debe impedir el envío si el campo de usuario está en blanco o con solo espacios, conservando el campo vacío y notificando al visitante. El backend Socket.IO debe rechazar mensajes con autor no especificado o vacío sin asignar anónimos.
+Acceptance: WHEN a visitor activates Send with an empty or whitespace-only username and a real message THEN the system SHALL NOT add a message to the transcript, SHALL keep the username field empty, and SHALL tell the visitor to write a name.

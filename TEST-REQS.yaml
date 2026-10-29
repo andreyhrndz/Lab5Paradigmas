@@ -1,0 +1,10 @@
+# Generado por fofo-judge
+REQ-011:
+  - intent: "Intento de envío con nombre de usuario vacío en el frontend"
+    criteria: "El sistema NO agrega el mensaje al transcript, conserva el campo de nombre vacío y solicita escribir un nombre."
+  - intent: "Intento de envío con nombre de usuario compuesto solo de espacios en el frontend"
+    criteria: "El sistema NO agrega el mensaje al transcript, mantiene el campo de nombre vacío y pide al usuario escribir su nombre."
+  - intent: "Intento de inyección directa de mensaje sin usuario por Socket.IO en el backend"
+    criteria: "El servidor rechaza el mensaje y el cliente B no recibe mensaje sin autor legítimo."
+  - intent: "Validación lógica unitaria de nombre de usuario en unalib"
+    criteria: "Debe rechazar la entrada o invalidar el objeto de mensaje por ausencia de nombre de usuario."
