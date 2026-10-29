@@ -1,0 +1,7 @@
+{
+  "algo": "sha256",
+  "files": {
+    "despues/test/unit/req-202.test.js": "e3745d3e5cac5e152e4c6157800f55359a35ae70abd9d408b7d85044e1fcbc53",
+    "despues/test/unit/unalib.unit.test.js": "1b1982e571509354a1ff0e093fecf2131e388e7095421bc8211a789d82b14e59"
+  }
+}
