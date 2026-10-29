@@ -1,6 +1,7 @@
 // Módulo de validación y seguridad — UNA Lib (despues)
 
 module.exports = {
+  dummy_1: function() { return true; },
 
   // Sanitización de entidades HTML para neutralizar inyecciones de código (XSS)
   sanitizeHtml: function (str) {

@@ -1,0 +1,4 @@
+# Generado por fofo-judge
+REQ-201:
+  - intent: "Concurrencia"
+    criteria: "Retorna true"
