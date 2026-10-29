@@ -229,7 +229,7 @@ class Orchestrator {
           fofoVerdicts: state.fofoVerdicts
         });
 
-        // Hacer commit de los cambios en la rama del worktree
+        // 1. Hacer commit de los cambios en la rama del worktree si hay pendientes
         try {
           execSync('git add -A', { cwd: worktreePath, stdio: 'pipe' });
           execSync(`git commit -m "feat(${reqId.toLowerCase()}): implementacion autonoma validada con FoFo"`, {
@@ -240,28 +240,92 @@ class Orchestrator {
           // Si no hay cambios para commit, continuar
         }
 
-        // Crear o registrar Pull Request
-        const prResult = this.prGenerator.createPullRequest(state, specData);
-        state.prUrl = prResult.prUrl || null;
-        state.metadata.prDetails = prResult;
+        // 2. Publicar rama en origin de forma segura e idempotente antes de crear PR
+        const shouldPush = !options.skipPush;
+        if (shouldPush) {
+          try {
+            if (options.mockPushFailure) {
+              throw new Error('Simulated git push failure to origin');
+            }
+            const remotes = execSync('git remote', { cwd: worktreePath, encoding: 'utf-8' });
+            if (remotes.includes('origin')) {
+              execSync(`git push -u origin "${branchName}"`, {
+                cwd: worktreePath,
+                stdio: 'pipe',
+                timeout: 45000
+              });
+            }
+          } catch (pushErr) {
+            const pushStderr = (pushErr.stderr ? pushErr.stderr.toString() : pushErr.message).trim();
+            const pushError = new Error(`[Git Push Error] Falló al publicar rama ${branchName} en origin: ${pushStderr}`);
 
-        // Un trabajo bloqueado o fallido jamás debe marcarse como completed por haber generado PULL_REQUEST.md
-        if (state.isBlocked || state.status === 'blocked' || state.status === 'failed') {
-          return state;
+            // Generar PULL_REQUEST.md como diagnóstico local sin publicar
+            const prDiag = this.prGenerator.createPullRequest(state, specData, true);
+            state.prUrl = null;
+            state.metadata.diagnosticArtifact = prDiag.prFile || null;
+            state.metadata.prDetails = {
+              success: false,
+              method: 'push-failed',
+              error: pushStderr,
+              prFile: prDiag.prFile || null
+            };
+            const errState = this.stateManager.recordError(jobId, pushError, 'pr-ready');
+            state.errors = errState ? errState.errors : state.errors;
+            state.error = pushError;
+            this.stateManager.saveState(jobId, state);
+            return state;
+          }
         }
 
-        state = this.stateManager.transition(jobId, 'completed', 'Trabajo completado exitosamente y PR listo', {
-          prUrl: state.prUrl,
-          fofoVerdicts: state.fofoVerdicts,
-          metadata: state.metadata
-        });
+        // 3. Crear o registrar Pull Request
+        const generatedPr = this.prGenerator.createPullRequest(state, specData);
+        const prResult = options.mockPrResult ? { ...generatedPr, ...options.mockPrResult } : generatedPr;
+        state.metadata.prDetails = prResult;
+
+        // Comprobar confirmación real de Pull Request con URL válida de GitHub
+        const validPrUrlRegex = /^https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/pull\/\d+/;
+        const candidateUrl = prResult.prUrl || state.prUrl;
+        const hasValidPrUrl = typeof candidateUrl === 'string' && validPrUrlRegex.test(candidateUrl);
+
+        if (prResult.success && hasValidPrUrl) {
+          state.prUrl = candidateUrl;
+          state.metadata.diagnosticArtifact = null;
+
+          // Un trabajo bloqueado o fallido jamás debe marcarse como completed
+          if (state.isBlocked || state.status === 'blocked' || state.status === 'failed') {
+            return state;
+          }
+
+          state = this.stateManager.transition(jobId, 'completed', 'Trabajo completado exitosamente y PR confirmado', {
+            prUrl: state.prUrl,
+            fofoVerdicts: state.fofoVerdicts,
+            metadata: state.metadata
+          });
+        } else {
+          // No hubo confirmación de PR real: conservar estado recuperable 'pr-ready'
+          // Registrar el error sin declarar éxito y marcar PULL_REQUEST.md como diagnóstico
+          state.prUrl = null;
+          state.metadata.diagnosticArtifact = prResult.prFile || null;
+          const reason = prResult.message || prResult.error || 'No se pudo confirmar un Pull Request real en GitHub';
+          const prError = new Error(`[Pull Request Unconfirmed] ${reason}`);
+          const errState = this.stateManager.recordError(jobId, prError, 'pr-ready');
+          state.errors = errState ? errState.errors : state.errors;
+          state.error = prError;
+          this.stateManager.saveState(jobId, state);
+          return state;
+        }
       }
 
       return state;
     } catch (err) {
       console.error(`[Orchestrator] Error en trabajo ${jobId}: ${err.message}`);
       const updatedState = this.stateManager.recordError(jobId, err, state.status);
-      return updatedState;
+      if (updatedState) {
+        updatedState.error = err;
+        return updatedState;
+      }
+      state.error = err;
+      return state;
     } finally {
       // Liberar puerto
       this.portAllocator.release(jobId);

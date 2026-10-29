@@ -155,6 +155,7 @@ ${verdictsList || '- Todos los gates de trazabilidad, integridad y escaneo de se
             authenticated: true,
             method: 'existing',
             prUrl: prs[0].url,
+            prFile: prFilePath,
             message: `PR existente encontrado: ${prs[0].url}`
           };
         }
@@ -186,6 +187,7 @@ ${verdictsList || '- Todos los gates de trazabilidad, integridad y escaneo de se
           authenticated: true,
           method: 'gh-cli',
           prUrl,
+          prFile: prFilePath,
           message: `Pull Request creado exitosamente: ${prUrl}`
         };
       } else {
