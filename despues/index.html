@@ -58,6 +58,11 @@
 
         $('form').submit(function (e) {
           e.preventDefault();
+          var rawMsg = $('#m').val();
+          if (rawMsg.length > 280) {
+            alert('El mensaje es demasiado largo (maximo 280 caracteres)');
+            return false;
+          }
           var nombreTxt = $('#nombre').val() || "Anonimo";
           var mensajeTxt = $('#m').val();
 

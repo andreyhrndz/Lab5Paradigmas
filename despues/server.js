@@ -19,6 +19,19 @@ io.on('connection', function(socket){
   socket.on('Evento-Mensaje-Server', function(msg){
     var validatedMsg = validation.validateMessage(msg);
     // Retransmisión del mensaje validado y saneado a todos los clientes
+    try {
+      var parsed = typeof validatedMsg === 'string' ? JSON.parse(validatedMsg) : validatedMsg;
+      if (
+        !parsed ||
+        parsed.valid === false ||
+        parsed.error != null ||
+        (typeof parsed.mensaje === 'string' && parsed.mensaje.length > 280)
+      ) {
+        return;
+      }
+    } catch (e) {
+      return;
+    }
     io.emit('Evento-Mensaje-Server', validatedMsg);
   });
 });

@@ -161,6 +161,18 @@ module.exports = {
     var safeNombre = this.sanitizeName(obj.nombre);
     var safeColor = this.sanitizeColor(obj.color);
 
+    // Validacion de longitud maxima (REQ-012: maximo 280 caracteres)
+    if (rawMensaje.length > 280) {
+      return JSON.stringify({
+        valid: false,
+        error: 'El mensaje es demasiado largo (maximo 280 caracteres)',
+        nombre: safeNombre,
+        mensaje: rawMensaje.slice(0, 280),
+        color: safeColor,
+        tipo: 'text'
+      });
+    }
+
     // Detección y clasificación segura
     if (this.is_valid_url_image(rawMensaje)) {
       obj.tipo = 'image';
