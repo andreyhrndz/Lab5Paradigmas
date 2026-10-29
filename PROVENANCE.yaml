@@ -1,0 +1,16 @@
+# FoFo Provenance Manifest
+job_id: "par-job-3-1793233044957"
+timestamp: "2026-10-29T00:17:39.952Z"
+cli_engine: "C:\Users\cuent\AppData\Local\agy\bin\agy.exe"
+real_agent_active: true
+judge:
+  name: "fofo-judge"
+  role: "Judge — Test Requirements & Red Tests Author"
+  files_authored:
+    - "despues/test/unit/req-203.test.js"
+author:
+  name: "fofo-author"
+  role: "Author — Production Code Implementer"
+  files_authored:
+    - "despues/libs/unalib.js"
+separation_enforced: true
