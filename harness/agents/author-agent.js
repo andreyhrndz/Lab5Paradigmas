@@ -27,7 +27,7 @@ class AuthorAgent {
       'despues/index.html'
     ];
 
-    // Si se pasa función implementadora explícita (p. ej. en pruebas de infraestructura)
+    // 1. Si se pasa función implementadora explícita (p. ej. en pruebas de infraestructura o simulaciones)
     if (typeof implementorFn === 'function') {
       const result = await implementorFn(specData, worktreePath);
       if (result && Array.isArray(result.modifiedFiles)) {
@@ -36,7 +36,7 @@ class AuthorAgent {
       return result;
     }
 
-    // Si se proporciona un parche o parches estructurados
+    // 2. Si se proporciona un conjunto de parches estructurados para múltiples archivos
     if (specData.implementationPatches && Array.isArray(specData.implementationPatches)) {
       const modifiedFiles = [];
       for (const patch of specData.implementationPatches) {
@@ -56,7 +56,7 @@ class AuthorAgent {
       };
     }
 
-    // Parche singular retrocompatible
+    // 3. Parche singular retrocompatible
     if (specData.implementationPatch) {
       const patchFile = specData.implementationPatch.file;
       this.specLoader.validateAllowedFiles([patchFile], allowedFiles);
@@ -73,7 +73,7 @@ class AuthorAgent {
       }
     }
 
-    // Invocación a agente real si CLI está disponible
+    // 4. Invocación a agente real si CLI está disponible
     if (this.cliPath && !this.mockMode) {
       return await this.invokeRealAuthorAgent(specData, worktreePath, redTestError, allowedFiles);
     }
@@ -86,24 +86,25 @@ class AuthorAgent {
   }
 
   async invokeRealAuthorAgent(specData, worktreePath, redTestError = '', allowedFiles = []) {
-    // Archivo objetivo primario
-    const primaryFile = (specData.targetFiles && specData.targetFiles[0]) || specData.targetFile || 'despues/libs/unalib.js';
-    this.specLoader.validateAllowedFiles([primaryFile], allowedFiles);
-
-    const targetFullPath = path.join(worktreePath, primaryFile);
-    if (!fs.existsSync(targetFullPath)) {
-      throw new Error(`[AuthorAgent] Archivo objetivo no existe: ${primaryFile}`);
+    // Proporcionar contexto de los 3 archivos productivos autorizados
+    const filesContext = [];
+    for (const relPath of allowedFiles) {
+      const fullPath = path.join(worktreePath, relPath);
+      if (fs.existsSync(fullPath)) {
+        const code = fs.readFileSync(fullPath, 'utf-8');
+        filesContext.push(`### ARCHIVO: ${relPath}\n\`\`\`\n${code}\n\`\`\``);
+      }
     }
-
-    const currentCode = fs.readFileSync(targetFullPath, 'utf-8');
 
     const prompt = `Actúa como el agente Author en una arquitectura FoFo (Agentic SDLC).
 Tu objetivo es modificar el código productivo para que la suite de pruebas unitarias y de comportamiento pasen a VERDE.
+
 REGLA CRÍTICA DE AISLAMIENTO:
 - Tienes ESTRICTAMENTE PROHIBIDO modificar archivos en la carpeta de pruebas (despues/test/).
-- Solo tienes permiso para modificar los archivos productivos autorizados: ${allowedFiles.join(', ')}.
+- Tienes permiso para modificar los archivos productivos autorizados:
+  ${allowedFiles.join('\n  ')}
 - Cualquier intento de modificar pruebas será detectado por el Referee mediante hashes SHA-256 (FoFo test-lock) y causará el rechazo inmediato del trabajo.
-- Asegura que las validaciones funcionen tanto en frontend como en backend: Socket.IO debe rechazar entradas inválidas.
+- Asegura que las validaciones funcionen tanto en frontend (despues/index.html) como en backend (despues/libs/unalib.js y despues/server.js).
 
 INFORMACIÓN DEL REQUERIMIENTO:
 ID: ${specData.reqId}
@@ -111,17 +112,22 @@ Título: ${specData.title || specData.reqId}
 Descripción: ${specData.description || ''}
 Criterio de Aceptación: ${specData.acceptance || ''}
 
-ERROR OBSERVADO AL EJECUTAR LA PRUEBA EN ROJO (RED):
+ERROR OBSERVADO EN ROJO (RED):
 ${redTestError ? redTestError.slice(0, 1000) : 'La funcionalidad no está implementada aún.'}
 
-CÓDIGO ACTUAL DE ${primaryFile}:
-\`\`\`javascript
-${currentCode}
-\`\`\`
+CÓDIGO ACTUAL DE LOS ARCHIVOS PRODUCTIVOS:
+${filesContext.join('\n\n')}
 
 INSTRUCCIONES DE SALIDA:
-Devuelve el archivo COMPLETO y ACTUALIZADO de ${primaryFile} con la implementación necesaria para satisfacer el requerimiento y pasar las pruebas sin romper la funcionalidad existente.
-Devuelve ÚNICAMENTE el bloque de código envuelto en \`\`\`javascript ... \`\`\`. Sin explicaciones adicionales.`;
+Para cada archivo que necesites modificar, incluye exactamente la cabecera:
+### FILE: <ruta-relativa>
+seguida de un bloque con el código completo actualizado del archivo.
+Ejemplo:
+### FILE: despues/libs/unalib.js
+\`\`\`javascript
+... codigo ...
+\`\`\`
+Sin explicaciones adicionales.`;
 
     try {
       const res = await spawnAsync(this.cliPath, ['--print', prompt, '--print-timeout', '120s'], {
@@ -131,9 +137,21 @@ Devuelve ÚNICAMENTE el bloque de código envuelto en \`\`\`javascript ... \`\`\
       });
 
       if (res.status === 0 && res.stdout) {
-        const newCode = this.extractCodeBlock(res.stdout);
-        if (newCode && (newCode.includes('module.exports') || newCode.includes('function'))) {
-          fs.writeFileSync(targetFullPath, newCode, 'utf-8');
+        const modifiedFiles = this.applyMultiFileUpdates(res.stdout, worktreePath, allowedFiles);
+        if (modifiedFiles.length > 0) {
+          return {
+            modifiedFiles,
+            status: 'applied',
+            method: 'real-agent-cli'
+          };
+        }
+
+        // Fallback: si devolvió un solo bloque sin cabeceras ### FILE
+        const primaryFile = allowedFiles[0] || 'despues/libs/unalib.js';
+        const singleCode = this.extractCodeBlock(res.stdout);
+        if (singleCode && (singleCode.includes('module.exports') || singleCode.includes('function'))) {
+          const targetFullPath = path.join(worktreePath, primaryFile);
+          fs.writeFileSync(targetFullPath, singleCode, 'utf-8');
           return {
             modifiedFiles: [primaryFile],
             status: 'applied',
@@ -155,6 +173,28 @@ Devuelve ÚNICAMENTE el bloque de código envuelto en \`\`\`javascript ... \`\`\
         error: err.message
       };
     }
+  }
+
+  applyMultiFileUpdates(output, worktreePath, allowedFiles) {
+    const modified = [];
+    const fileHeaderRegex = /###\s*FILE:\s*([^\r\n]+)[\r\n]+```(?:javascript|js|html)?\s*([\s\S]*?)```/gi;
+    let match;
+
+    while ((match = fileHeaderRegex.exec(output)) !== null) {
+      const relPath = match[1].trim().replace(/\\/g, '/');
+      const fileContent = match[2].trim();
+
+      // Validación estricta de autorización y blindaje de pruebas
+      this.specLoader.validateAllowedFiles([relPath], allowedFiles);
+
+      const fullPath = path.join(worktreePath, relPath);
+      fs.writeFileSync(fullPath, fileContent, 'utf-8');
+      if (!modified.includes(relPath)) {
+        modified.push(relPath);
+      }
+    }
+
+    return modified;
   }
 
   extractCodeBlock(text) {

@@ -58,13 +58,13 @@ class FoFoDriver {
     };
   }
 
-  // 1. Escribir y congelar el lockfile de pruebas (Phase 2 exit por Judge)
-  writeTestLock(contextDir, testGlob = 'despues/test/unit/**/*.test.js') {
+  // 1. Escribir y congelar el lockfile de TODAS las pruebas generadas (unit, integration, e2e)
+  writeTestLock(contextDir, testGlob = 'despues/test/**/*') {
     return this.runGate('test-lock', ['--write', '--changed', testGlob], contextDir);
   }
 
-  // 2. Verificar que el Author no haya manipulado las pruebas (Phase 3 y Phase 4)
-  verifyTestLock(contextDir, testGlob = 'despues/test/unit/**/*.test.js') {
+  // 2. Verificar que el Author no haya manipulado ninguna prueba bloqueada
+  verifyTestLock(contextDir, testGlob = 'despues/test/**/*') {
     return this.runGate('test-lock', ['--changed', testGlob], contextDir);
   }
 
@@ -74,7 +74,7 @@ class FoFoDriver {
   }
 
   // 4. Validar trazabilidad entre requerimientos y pruebas (Phase 1 y 4)
-  runTraceGate(contextDir, changedTests = 'despues/test/unit/**/*.test.js') {
+  runTraceGate(contextDir, changedTests = 'despues/test/**/*') {
     return this.runGate('trace-gate', ['--changed', changedTests], contextDir);
   }
 

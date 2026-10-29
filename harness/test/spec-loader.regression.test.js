@@ -6,6 +6,7 @@ const os = require('os');
 const SpecLoader = require('../core/spec-loader');
 const JudgeAgent = require('../agents/judge-agent');
 const AuthorAgent = require('../agents/author-agent');
+const FoFoDriver = require('../core/fofo-driver');
 
 describe('Harness Autónomo — Pruebas de Especificaciones Formales, Cargador y Archivos Autorizados', function () {
   this.timeout(10000);
@@ -18,7 +19,10 @@ describe('Harness Autónomo — Pruebas de Especificaciones Formales, Cargador y
     specLoader = new SpecLoader(repoRoot);
     tempWorktree = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-spec-test-'));
     fs.mkdirSync(path.join(tempWorktree, 'despues', 'libs'), { recursive: true });
+    fs.mkdirSync(path.join(tempWorktree, 'despues', 'public'), { recursive: true });
     fs.writeFileSync(path.join(tempWorktree, 'despues', 'libs', 'unalib.js'), 'module.exports = {};');
+    fs.writeFileSync(path.join(tempWorktree, 'despues', 'server.js'), '// server');
+    fs.writeFileSync(path.join(tempWorktree, 'despues', 'index.html'), '<html></html>');
   });
 
   after(function () {
@@ -86,9 +90,9 @@ describe('Harness Autónomo — Pruebas de Especificaciones Formales, Cargador y
   });
 
   describe('2. Control de Autorización de Archivos y Blindaje de Pruebas', function () {
-    it('Debe permitir la modificación de archivos productivos autorizados (incluido despues/index.html)', function () {
+    it('Debe permitir la modificación de los tres archivos productivos autorizados (libs, server, index.html)', function () {
       const allowed = ['despues/libs/unalib.js', 'despues/server.js', 'despues/index.html'];
-      const ok = specLoader.validateAllowedFiles(['despues/index.html', 'despues/server.js'], allowed);
+      const ok = specLoader.validateAllowedFiles(['despues/index.html', 'despues/server.js', 'despues/libs/unalib.js'], allowed);
       assert.strictEqual(ok, true);
     });
 
@@ -144,7 +148,25 @@ describe('Harness Autónomo — Pruebas de Especificaciones Formales, Cargador y
     });
   });
 
-  describe('4. AuthorAgent y Protección de Pruebas', function () {
+  describe('4. AuthorAgent: Modificación de los Tres Archivos Productivos y Blindaje de Pruebas', function () {
+    it('Author debe poder aplicar parches en los tres archivos productivos autorizados', async function () {
+      const author = new AuthorAgent({ mockMode: true });
+      const spec = specLoader.loadSpec('REQ-010');
+
+      spec.implementationPatches = [
+        { file: 'despues/libs/unalib.js', apply: (c) => c + '\n// patch unalib' },
+        { file: 'despues/server.js', apply: (c) => c + '\n// patch server' },
+        { file: 'despues/index.html', apply: (c) => c + '\n<!-- patch html -->' }
+      ];
+
+      const res = await author.implement(spec, tempWorktree);
+      assert.strictEqual(res.status, 'applied');
+      assert.strictEqual(res.modifiedFiles.length, 3);
+      assert(res.modifiedFiles.includes('despues/libs/unalib.js'));
+      assert(res.modifiedFiles.includes('despues/server.js'));
+      assert(res.modifiedFiles.includes('despues/index.html'));
+    });
+
     it('Author debe rechazar implementaciones que intenten alterar archivos de pruebas bloqueadas', async function () {
       const author = new AuthorAgent({ mockMode: true });
       const spec = specLoader.loadSpec('REQ-010');
@@ -160,6 +182,17 @@ describe('Harness Autónomo — Pruebas de Especificaciones Formales, Cargador y
         },
         /Security Violation/
       );
+    });
+  });
+
+  describe('5. FoFo test-lock protegiendo todas las pruebas generadas', function () {
+    it('FoFoDriver debe congelar y verificar con éxito todas las pruebas en despues/test/**/*', function () {
+      const fofo = new FoFoDriver();
+      const lockRes = fofo.writeTestLock(tempWorktree, 'despues/test/**/*');
+      assert.strictEqual(lockRes.passed, true, 'test-lock write debió pasar');
+
+      const verifyRes = fofo.verifyTestLock(tempWorktree, 'despues/test/**/*');
+      assert.strictEqual(verifyRes.passed, true, 'test-lock verify debió pasar');
     });
   });
 });
