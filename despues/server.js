@@ -1,48 +1,264 @@
-// Servidor UNA Chat — Express + Socket.IO (despues)
+// Servidor UNA Chat — Express + Socket.IO + Auth0 (despues)
 
-var validation = require('./libs/unalib');
-var path = require('path');
-var express = require('express');
-var app = express();
-var http = require('http').Server(app);
-var io = require('socket.io')(http);
-var port = process.env.PORT || 3000;
+require('dotenv').config();
 
-// Servir la interfaz web del chat y archivos estáticos
-app.use(express.static(path.resolve(__dirname, 'public')));
-app.get('/', function(req, res){
-  res.sendFile(path.resolve(__dirname, 'index.html'));
-});
+const path = require('path');
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const { requiresAuth } = require('express-openid-connect');
+const validation = require('./libs/unalib');
+const {
+  createAuth0Middleware,
+  getAuthenticatedUser,
+  socketAuthMiddleware,
+} = require('./libs/auth-session');
 
-// Gestión de conexiones en tiempo real vía WebSockets
-io.on('connection', function(socket){
-  socket.on('Evento-Mensaje-Server', function(msg){
-    var validatedMsg = validation.validateMessage(msg);
-    try {
-      var parsed = typeof validatedMsg === 'string' ? JSON.parse(validatedMsg) : validatedMsg;
-      if (
-        !parsed ||
-        parsed.valid === false ||
-        parsed.error != null ||
-        (typeof parsed.mensaje === 'string' && parsed.mensaje.trim() === '') ||
-        (typeof parsed.mensaje === 'string' && parsed.mensaje.length > 280) ||
-        (typeof parsed.nombre === 'string' && parsed.nombre.trim() === '')
-      ) {
-        return;
-      }
-    } catch (e) {
-      return;
-    }
-    // Retransmisión del mensaje validado y saneado a todos los clientes
-    io.emit('Evento-Mensaje-Server', validatedMsg);
-  });
-});
+const REQUIRED_AUTH0_VARIABLES = [
+  'AUTH0_SECRET',
+  'AUTH0_BASE_URL',
+  'AUTH0_CLIENT_ID',
+  'AUTH0_ISSUER_BASE_URL',
+  'AUTH0_CLIENT_SECRET',
+];
 
-// Iniciar servidor solo si es ejecutado directamente desde CLI
-if (require.main === module) {
-  http.listen(port, function(){
-    console.log('listening on *:' + port);
-  });
+function getAuth0Config(environment = process.env) {
+  const missing = REQUIRED_AUTH0_VARIABLES.filter(
+    (name) => !environment[name] || !String(environment[name]).trim(),
+  );
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Auth0 configuration is incomplete. Set: ${missing.join(', ')}`,
+    );
+  }
+
+  if (String(environment.AUTH0_SECRET).length < 32) {
+    throw new Error('AUTH0_SECRET must contain at least 32 characters.');
+  }
+
+  let baseURL;
+  try {
+    baseURL = new URL(environment.AUTH0_BASE_URL);
+  } catch (_error) {
+    throw new Error('AUTH0_BASE_URL must be a valid absolute URL.');
+  }
+
+  if (!['http:', 'https:'].includes(baseURL.protocol)) {
+    throw new Error('AUTH0_BASE_URL must use HTTP or HTTPS.');
+  }
+
+  const production = environment.NODE_ENV === 'production';
+  if (production && baseURL.protocol !== 'https:') {
+    throw new Error('AUTH0_BASE_URL must use HTTPS in production.');
+  }
+
+  const secureCookie = baseURL.protocol === 'https:';
+
+  return {
+    authRequired: false,
+    idpLogout: true,
+    secret: environment.AUTH0_SECRET,
+    baseURL: baseURL.origin,
+    clientID: environment.AUTH0_CLIENT_ID,
+    clientSecret: environment.AUTH0_CLIENT_SECRET,
+    issuerBaseURL: environment.AUTH0_ISSUER_BASE_URL,
+    authorizationParams: {
+      response_type: 'code',
+      scope: 'openid profile email',
+      ...(environment.AUTH0_CONNECTION
+        ? { connection: environment.AUTH0_CONNECTION }
+        : {}),
+    },
+    session: {
+      // ASVS 3.3.1: use a host-only prefix whenever HTTPS is available.
+      name: secureCookie ? '__Host-appSession' : 'appSession',
+      rolling: true,
+      rollingDuration: 24 * 60 * 60,
+      absoluteDuration: 7 * 24 * 60 * 60,
+      cookie: {
+        // ASVS 3.3.2 / 3.3.4: the session never reaches JavaScript and is
+        // restricted to the host root. Plain HTTP is allowed only for localhost.
+        httpOnly: true,
+        secure: secureCookie,
+        sameSite: 'Lax',
+        path: '/',
+      },
+    },
+  };
 }
 
-module.exports = { app, http, io };
+function isInitialSocketHandshake(request) {
+  return !request._query || request._query.sid === undefined;
+}
+
+function applyBrowserSecurityHeaders(production) {
+  return function browserSecurityHeaders(_req, res, next) {
+    // The UI is a single inline-script document. Keep the policy explicit and
+    // narrow its network destinations instead of relying on browser defaults.
+    res.set({
+      'Content-Security-Policy': [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' https:",
+        "connect-src 'self' ws: wss:",
+        'frame-src https://www.youtube.com',
+        "object-src 'none'",
+        "base-uri 'none'",
+        "frame-ancestors 'none'",
+      ].join('; '),
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Resource-Policy': 'same-origin',
+    });
+    if (production) {
+      res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    next();
+  };
+}
+
+function hasTrustedSocketOrigin(request, baseURL) {
+  return typeof request.headers.origin === 'string' && request.headers.origin === baseURL;
+}
+
+function getAuthenticatedMessage(msg, user) {
+  const validatedMsg = validation.validateMessage(msg);
+
+  let parsed;
+  try {
+    parsed = typeof validatedMsg === 'string' ? JSON.parse(validatedMsg) : validatedMsg;
+  } catch (_error) {
+    return null;
+  }
+
+  if (
+    !parsed ||
+    parsed.valid === false ||
+    parsed.error != null ||
+    (typeof parsed.mensaje === 'string' && parsed.mensaje.trim() === '') ||
+    (typeof parsed.mensaje === 'string' && parsed.mensaje.length > 280) ||
+    (typeof parsed.nombre === 'string' && parsed.nombre.trim() === '')
+  ) {
+    return null;
+  }
+
+  // ASVS 8.2.1: the sender is server-side session state, never client input.
+  parsed.nombre = validation.sanitizeName(user.name);
+  return JSON.stringify(parsed);
+}
+
+function createUnaChatServer(options = {}) {
+  const environment = options.environment || process.env;
+  const authConfig =
+    options.authConfig ||
+    (options.authMiddleware ? null : getAuth0Config(environment));
+  const authMiddleware =
+    options.authMiddleware || createAuth0Middleware(authConfig);
+  const app = express();
+  const server = http.createServer(app);
+  const io = new Server(server);
+  const production = environment.NODE_ENV === 'production';
+
+  app.disable('x-powered-by');
+  app.set('trust proxy', production ? 1 : false);
+  app.use(applyBrowserSecurityHeaders(production));
+
+  // ASVS 10.1.2: auth() owns state, nonce, PKCE and callback validation.
+  app.use(authMiddleware);
+
+  // Auth0's SDK registers /login, /callback and /logout itself. There are no
+  // duplicate application routes for these endpoints.
+  // The landing page contains no transcript or user data. It can explain how
+  // to authenticate without turning the private chat into a static resource.
+  app.get('/', function serveAuthenticationLanding(_req, res) {
+    res.sendFile('index.html', { root: __dirname });
+  });
+  app.get('/chat', requiresAuth(), function servePrivateChat(_req, res) {
+    res.sendFile('index.html', { root: __dirname });
+  });
+  app.get('/api/user', function getCurrentUser(req, res) {
+    const user = getAuthenticatedUser(req);
+    res.set('Cache-Control', 'no-store');
+
+    if (!user) {
+      return res.status(401).json({ authenticated: false });
+    }
+
+    // ASVS 7.2.1: only expose the allowlisted profile produced by the
+    // validated server session. Tokens and raw session material stay server-side.
+    return res.json({ authenticated: true, user });
+  });
+  app.use(
+    '/public',
+    requiresAuth(),
+    express.static(path.resolve(__dirname, 'public')),
+  );
+  app.use(function handleAuthCallbackError(error, req, res, next) {
+    if (req.path === '/callback') {
+      // Do not reflect IdP or state-validation details into the browser.
+      return res.redirect(302, '/?authError=login_failed');
+    }
+    return next(error);
+  });
+
+  // Engine.IO receives raw HTTP requests, not requests that crossed app.use().
+  // A full Express router cannot run during a direct WebSocket upgrade because
+  // Engine.IO provides a reduced response object there. Require the initial
+  // polling handshake (a normal HTTP request), where the public Auth0 middleware
+  // can safely attach the verified req.oidc context before any upgrade occurs.
+  const handshakeApp = express();
+  handshakeApp.disable('x-powered-by');
+  handshakeApp.set('trust proxy', production ? 1 : false);
+  handshakeApp.use(authMiddleware);
+  io.engine.use(function authenticateInitialHandshake(req, res, next) {
+    if (!isInitialSocketHandshake(req)) {
+      return next();
+    }
+    if (req._query.transport !== 'polling') {
+      return next(new Error('Socket.IO requires an authenticated polling handshake.'));
+    }
+    if (production && (!authConfig || !hasTrustedSocketOrigin(req, authConfig.baseURL))) {
+      return next(new Error('Socket.IO origin is not allowed.'));
+    }
+    return handshakeApp(req, res, next);
+  });
+
+  io.use(socketAuthMiddleware());
+
+  io.on('connection', function(socket) {
+    socket.on('Evento-Mensaje-Server', function(msg) {
+      const validatedMsg = getAuthenticatedMessage(msg, socket.data.user);
+      if (!validatedMsg) {
+        return;
+      }
+
+      io.emit('Evento-Mensaje-Server', validatedMsg);
+    });
+  });
+
+  return { app, http: server, io, authConfig };
+}
+
+if (require.main === module) {
+  try {
+    const { http: server } = createUnaChatServer();
+    const port = process.env.PORT || 3000;
+    server.listen(port, function() {
+      console.log('listening on *:' + port);
+    });
+  } catch (error) {
+    console.error(`Unable to start UNA Chat: ${error.message}`);
+    process.exitCode = 1;
+  }
+}
+
+module.exports = {
+  createUnaChatServer,
+  getAuth0Config,
+  getAuthenticatedMessage,
+  applyBrowserSecurityHeaders,
+  hasTrustedSocketOrigin,
+};

@@ -1,31 +1,18 @@
 // @req: REQ-012
 const { test, expect } = require('@playwright/test');
+const { authenticate } = require('./auth-fixture');
 
-test.describe('REQ-012 (E2E) — Límite de 280 caracteres en navegador', () => {
-  test('no debe agregar mensaje >280 chars al transcript, conserva texto en campo y notifica', async ({ page }) => {
+test.describe('REQ-012 (E2E) — límite de 280 caracteres', () => {
+  test('no agrega texto largo, lo conserva y notifica el límite', async ({ page, context }) => {
+    await authenticate(context);
     await page.goto('/');
-    let dialogMessage = '';
-    page.on('dialog', async dialog => {
-      dialogMessage = dialog.message();
-      await dialog.dismiss();
-    });
-
+    await expect(page.getByRole('button', { name: 'Enviar' })).toBeEnabled();
     const initialCount = await page.locator('#messages li').count();
-    const longText = 'C'.repeat(290);
-    await page.locator('#nombre').fill('UsuarioTest');
+    const longText = 'C'.repeat(281);
     await page.locator('#m').fill(longText);
-    await page.locator('button[type="submit"]').click();
-
-    // 1. SHALL NOT add that message to the transcript
+    await page.getByRole('button', { name: 'Enviar' }).click();
     await expect(page.locator('#messages li')).toHaveCount(initialCount);
-
-    // 2. SHALL keep the message text in the field
-    const fieldVal = await page.locator('#m').inputValue();
-    expect(fieldVal).toBe(longText);
-
-    // 3. SHALL tell the visitor the message is too long
-    const hasDomNotice = (await page.locator('text=/too long|demasiado largo|largo|280/i').count()) > 0;
-    const toldVisitor = Boolean(dialogMessage && /too long|demasiado largo|largo|280/i.test(dialogMessage)) || hasDomNotice;
-    expect(toldVisitor).toBe(true);
+    await expect(page.locator('#m')).toHaveValue(longText);
+    await expect(page.locator('#message-notice')).toContainText('máximo 280 caracteres');
   });
 });

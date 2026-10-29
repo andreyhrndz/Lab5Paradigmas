@@ -1,30 +1,17 @@
 // @req: REQ-010
 const { test, expect } = require('@playwright/test');
+const { authenticate } = require('./auth-fixture');
 
-test.describe('REQ-010 (E2E) — Validación de mensajes vacíos en navegador', () => {
-  test('no debe agregar al transcript, mantiene campo vacío y notifica escribir algo', async ({ page }) => {
+test.describe('REQ-010 (E2E) — validación de mensajes vacíos', () => {
+  test('no agrega contenido vacío y explica cómo corregirlo', async ({ page, context }) => {
+    await authenticate(context);
     await page.goto('/');
-    let dialogMessage = '';
-    page.on('dialog', async dialog => {
-      dialogMessage = dialog.message();
-      await dialog.dismiss();
-    });
-
+    await expect(page.getByRole('button', { name: 'Enviar' })).toBeEnabled();
     const initialCount = await page.locator('#messages li').count();
-    await page.locator('#nombre').fill('UsuarioTest');
     await page.locator('#m').fill('   ');
-    await page.locator('button[type="submit"]').click();
-
-    // 1. SHALL NOT add a message to the transcript
+    await page.getByRole('button', { name: 'Enviar' }).click();
     await expect(page.locator('#messages li')).toHaveCount(initialCount);
-
-    // 2. SHALL keep the message field empty
-    const msgVal = await page.locator('#m').inputValue();
-    expect(msgVal.trim()).toBe('');
-
-    // 3. SHALL tell the visitor to write something
-    const hasDomNotice = (await page.locator('text=/escriba|write|algo|mensaje|empty/i').count()) > 0;
-    const toldVisitor = Boolean(dialogMessage && /escriba|write|algo|mensaje|empty/i.test(dialogMessage)) || hasDomNotice;
-    expect(toldVisitor).toBe(true);
+    await expect(page.locator('#m')).toHaveValue('');
+    await expect(page.locator('#message-notice')).toContainText('Escriba un mensaje');
   });
 });

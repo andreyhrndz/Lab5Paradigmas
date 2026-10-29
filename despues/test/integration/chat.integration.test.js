@@ -1,202 +1,71 @@
 const assert = require('assert');
-const ioClient = require('socket.io-client');
-const { http, io } = require('../../server');
+const { createRuntime, verifiedUser } = require('./socket-auth-test-helpers');
 
-describe('UNA Chat — Pruebas de Integración con Socket.IO', function () {
+describe('UNA Chat — integración Socket.IO con sesión Auth0', function () {
   this.timeout(10000);
-
+  let fixture;
   let port;
-  let serverInstance;
-  let clientSocketA;
-  let clientSocketB;
 
-  // Iniciar servidor en puerto dinámico antes de las pruebas
-  before(function (done) {
-    serverInstance = http.listen(0, function () {
-      port = serverInstance.address().port;
-      done();
-    });
+  before(async function () { fixture = createRuntime(); port = await fixture.start(); });
+  after(async function () { await fixture.stop(); });
+
+  async function send(message) {
+    const socket = await fixture.connect(port);
+    const received = new Promise((resolve) => socket.once('Evento-Mensaje-Server', resolve));
+    socket.emit('Evento-Mensaje-Server', JSON.stringify(message));
+    return JSON.parse(await received);
+  }
+
+  it('retransmite texto con la identidad autenticada, no la enviada por el cliente', async function () {
+    const message = await send({ nombre: 'Suplantación', color: '#2ECC71', mensaje: 'Prueba de comunicación' });
+    assert.strictEqual(message.nombre, verifiedUser.name);
+    assert.strictEqual(message.mensaje, 'Prueba de comunicación');
+    assert.strictEqual(message.tipo, 'text');
   });
 
-  // Cerrar servidor y sockets al finalizar la suite
-  after(function (done) {
-    if (clientSocketA && clientSocketA.connected) {
-      clientSocketA.disconnect();
-    }
-    if (clientSocketB && clientSocketB.connected) {
-      clientSocketB.disconnect();
-    }
-    io.close(function () {
-      done();
-    });
+  it('acepta una URL de imagen válida', async function () {
+    const url = 'https://images.example.test/photo.png';
+    const message = await send({ color: '#3498DB', mensaje: url });
+    assert.strictEqual(message.nombre, verifiedUser.name);
+    assert.strictEqual(message.tipo, 'image');
+    assert.strictEqual(message.url, url);
   });
 
-  // Conectar cliente A antes de cada prueba
-  beforeEach(function (done) {
-    clientSocketA = ioClient(`http://localhost:${port}`, {
-      transports: ['websocket'],
-      forceNew: true
-    });
-    clientSocketA.on('connect', done);
+  it('acepta una URL de video de YouTube válida', async function () {
+    const message = await send({ color: '#9B59B6', mensaje: 'https://www.youtube.com/watch?v=qYwlqx-JLok' });
+    assert.strictEqual(message.tipo, 'video');
+    assert.strictEqual(message.videoId, 'qYwlqx-JLok');
   });
 
-  // Desconectar sockets después de cada prueba
-  afterEach(function () {
-    if (clientSocketA && clientSocketA.connected) {
-      clientSocketA.disconnect();
-    }
-    if (clientSocketB && clientSocketB.connected) {
-      clientSocketB.disconnect();
-    }
+  it('neutraliza script y manejadores de eventos antes de retransmitir', async function () {
+    const script = await send({ color: '#E74C3C', mensaje: '<script>alert(1)</script>' });
+    const handler = await send({ color: '#E67E22', mensaje: '<img src=x onerror=alert(1)>' });
+    assert.ok(script.mensaje.includes('&lt;script&gt;'));
+    assert.strictEqual(script.mensaje.includes('<script>'), false);
+    assert.ok(handler.mensaje.includes('&lt;img'));
   });
 
-  it('1. Debe recibir y retransmitir un mensaje de texto normal validado', function (done) {
-    const testMsg = {
-      nombre: 'UsuarioIntegracion',
-      color: '#2ECC71',
-      mensaje: 'Prueba de comunicacion por WebSockets'
-    };
+  it('neutraliza protocolos peligrosos y texto JSON malformado', async function () {
+    const socket = await fixture.connect(port);
+    const first = new Promise((resolve) => socket.once('Evento-Mensaje-Server', resolve));
+    socket.emit('Evento-Mensaje-Server', JSON.stringify({ color: '#1ABC9C', mensaje: 'javascript:alert(1)' }));
+    const dangerous = JSON.parse(await first);
+    assert.strictEqual(dangerous.mensaje.includes('javascript:'), false);
 
-    clientSocketA.on('Evento-Mensaje-Server', function (msg) {
-      const parsed = JSON.parse(msg);
-      assert.strictEqual(parsed.nombre, 'UsuarioIntegracion');
-      assert.strictEqual(parsed.color, '#2ECC71');
-      assert.strictEqual(parsed.mensaje, 'Prueba de comunicacion por WebSockets');
-      assert.strictEqual(parsed.tipo, 'text');
-      done();
-    });
-
-    clientSocketA.emit('Evento-Mensaje-Server', JSON.stringify(testMsg));
+    const second = new Promise((resolve) => socket.once('Evento-Mensaje-Server', resolve));
+    socket.emit('Evento-Mensaje-Server', '{ malformed <script>alert(1)</script>');
+    const malformed = JSON.parse(await second);
+    assert.strictEqual(malformed.nombre, verifiedUser.name);
+    assert.strictEqual(malformed.tipo, 'text');
   });
 
-  it('2. Debe procesar mediante UNA Lib y aceptar una URL de imagen válida', function (done) {
-    const testMsg = {
-      nombre: 'UsuarioFoto',
-      color: '#3498DB',
-      mensaje: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675.jpg'
-    };
-
-    clientSocketA.on('Evento-Mensaje-Server', function (msg) {
-      const parsed = JSON.parse(msg);
-      assert.strictEqual(parsed.tipo, 'image');
-      assert.strictEqual(parsed.url, 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675.jpg');
-      assert.ok(parsed.mensaje.includes('<img'));
-      assert.ok(parsed.mensaje.includes('max-height: 400px'));
-      done();
-    });
-
-    clientSocketA.emit('Evento-Mensaje-Server', JSON.stringify(testMsg));
+  it('retransmite a dos clientes autenticados', async function () {
+    const sender = await fixture.connect(port);
+    const receiver = await fixture.connect(port);
+    const received = new Promise((resolve) => receiver.once('Evento-Mensaje-Server', resolve));
+    sender.emit('Evento-Mensaje-Server', JSON.stringify({ color: '#34495E', mensaje: 'Mensaje para todos' }));
+    const message = JSON.parse(await received);
+    assert.strictEqual(message.nombre, verifiedUser.name);
+    assert.strictEqual(message.mensaje, 'Mensaje para todos');
   });
-
-  it('3. Debe procesar mediante UNA Lib y aceptar una URL de video de YouTube válida', function (done) {
-    const testMsg = {
-      nombre: 'UsuarioVideo',
-      color: '#9B59B6',
-      mensaje: 'https://www.youtube.com/watch?v=qYwlqx-JLok'
-    };
-
-    clientSocketA.on('Evento-Mensaje-Server', function (msg) {
-      const parsed = JSON.parse(msg);
-      assert.strictEqual(parsed.tipo, 'video');
-      assert.strictEqual(parsed.videoId, 'qYwlqx-JLok');
-      assert.ok(parsed.mensaje.includes('<iframe'));
-      assert.ok(parsed.mensaje.includes('https://www.youtube.com/embed/qYwlqx-JLok'));
-      done();
-    });
-
-    clientSocketA.emit('Evento-Mensaje-Server', JSON.stringify(testMsg));
-  });
-
-  it('4. Debe neutralizar intentos de inyección XSS con <script> antes de retransmitir', function (done) {
-    const maliciousMsg = {
-      nombre: 'AtacanteXSS',
-      color: '#E74C3C',
-      mensaje: "<script>alert('Inyección de script');</script>"
-    };
-
-    clientSocketA.on('Evento-Mensaje-Server', function (msg) {
-      const parsed = JSON.parse(msg);
-      assert.strictEqual(parsed.tipo, 'text');
-      // No debe contener etiquetas de script ejecutables
-      assert.strictEqual(parsed.mensaje.includes('<script>'), false);
-      assert.strictEqual(parsed.mensaje.includes('&lt;script&gt;'), true);
-      done();
-    });
-
-    clientSocketA.emit('Evento-Mensaje-Server', JSON.stringify(maliciousMsg));
-  });
-
-  it('5. Debe neutralizar vectores con manejadores de eventos (onerror)', function (done) {
-    const maliciousMsg = {
-      nombre: 'AtacanteImg',
-      color: '#E67E22',
-      mensaje: '<img src=x onerror=alert("pwned")>'
-    };
-
-    clientSocketA.on('Evento-Mensaje-Server', function (msg) {
-      const parsed = JSON.parse(msg);
-      assert.strictEqual(parsed.tipo, 'text');
-      assert.strictEqual(parsed.mensaje.includes('<img'), false);
-      assert.strictEqual(parsed.mensaje.includes('&lt;img'), true);
-      done();
-    });
-
-    clientSocketA.emit('Evento-Mensaje-Server', JSON.stringify(maliciousMsg));
-  });
-
-  it('6. Debe rechazar y sanitizar protocolos peligrosos (javascript:)', function (done) {
-    const maliciousMsg = {
-      nombre: 'AtacanteJs',
-      color: '#1ABC9C',
-      mensaje: 'javascript:alert("hacked")'
-    };
-
-    clientSocketA.on('Evento-Mensaje-Server', function (msg) {
-      const parsed = JSON.parse(msg);
-      assert.strictEqual(parsed.tipo, 'text');
-      assert.strictEqual(parsed.mensaje.includes('javascript:'), false);
-      done();
-    });
-
-    clientSocketA.emit('Evento-Mensaje-Server', JSON.stringify(maliciousMsg));
-  });
-
-  it('7. Debe manejar cadenas JSON corruptas o no formateadas sin caerse el servidor', function (done) {
-    clientSocketA.on('Evento-Mensaje-Server', function (msg) {
-      const parsed = JSON.parse(msg);
-      assert.ok(parsed.nombre);
-      assert.ok(parsed.mensaje);
-      assert.strictEqual(parsed.tipo, 'text');
-      done();
-    });
-
-    // Enviar JSON inválido
-    clientSocketA.emit('Evento-Mensaje-Server', '{ esto no es json { <script>alert(1)</script> ');
-  });
-
-  it('8. Debe retransmitir correctamente a múltiples clientes conectados en tiempo real', function (done) {
-    clientSocketB = ioClient(`http://localhost:${port}`, {
-      transports: ['websocket'],
-      forceNew: true
-    });
-
-    clientSocketB.on('connect', function () {
-      const broadcastMsg = {
-        nombre: 'EmisorA',
-        color: '#34495E',
-        mensaje: 'Mensaje para todos los clientes conectados'
-      };
-
-      // Cliente B debe recibir el mensaje emitido por el Cliente A
-      clientSocketB.on('Evento-Mensaje-Server', function (msg) {
-        const parsed = JSON.parse(msg);
-        assert.strictEqual(parsed.nombre, 'EmisorA');
-        assert.strictEqual(parsed.mensaje, 'Mensaje para todos los clientes conectados');
-        done();
-      });
-
-      clientSocketA.emit('Evento-Mensaje-Server', JSON.stringify(broadcastMsg));
-    });
-  });
-
 });

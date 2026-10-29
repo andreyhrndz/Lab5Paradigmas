@@ -4,6 +4,8 @@
 **Institución:** Universidad Nacional (UNA)  
 **Laboratorio:** Laboratorio 5 — Seguridad Informática y Testing Automatizado  
 
+> **Laboratorio 8 — US-01 Auth0:** las evidencias redactadas de consentimiento, sesión autenticada y mensajes están en [us-01-auth0/README.md](us-01-auth0/README.md). Las copias originales con datos personales no se versionan.
+
 ---
 
 ## 1. Índice de Evidencias Oficiales
