@@ -18,6 +18,12 @@ app.get('/', function(req, res){
 io.on('connection', function(socket){
   socket.on('Evento-Mensaje-Server', function(msg){
     var validatedMsg = validation.validateMessage(msg);
+    try {
+      var parsed = typeof validatedMsg === 'string' ? JSON.parse(validatedMsg) : validatedMsg;
+      if (parsed && (parsed.valid === false || parsed.error != null)) {
+        return;
+      }
+    } catch (e) {}
     // Retransmisión del mensaje validado y saneado a todos los clientes
     io.emit('Evento-Mensaje-Server', validatedMsg);
   });
