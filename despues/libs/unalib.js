@@ -132,32 +132,75 @@ module.exports = {
       tipo: 'text'
     };
 
-    if (!msg) {
-      return JSON.stringify(defaultResponse);
-    }
-
-    if (typeof msg !== 'string') {
+    if (msg === null || msg === undefined || typeof msg === 'boolean') {
       return JSON.stringify(defaultResponse);
     }
 
     var obj;
     try {
-      obj = JSON.parse(msg);
+      obj = typeof msg === 'string' ? JSON.parse(msg) : msg;
       if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+        var strMsg = String(msg).trim();
+        if (!strMsg) {
+          return JSON.stringify({
+            valid: false,
+            error: 'Mensaje vacío',
+            nombre: 'Anonimo',
+            mensaje: '',
+            color: '#000000',
+            tipo: 'text'
+          });
+        }
         obj = { mensaje: String(msg) };
       }
     } catch (e) {
       // Cadena de texto plano o JSON malformado
+      var str = String(msg).trim();
+      if (!str) {
+        return JSON.stringify({
+          valid: false,
+          error: 'Mensaje vacío',
+          nombre: 'Anonimo',
+          mensaje: '',
+          color: '#000000',
+          tipo: 'text'
+        });
+      }
       return JSON.stringify({
         nombre: 'Anonimo',
-        mensaje: this.sanitizeHtml(msg),
+        mensaje: this.sanitizeHtml(str),
         color: '#000000',
         tipo: 'text'
       });
     }
 
+    // Exigencia de nombre de usuario válido no vacío
+    if (obj.hasOwnProperty('nombre')) {
+      if (typeof obj.nombre !== 'string' || !obj.nombre.trim()) {
+        return JSON.stringify({ valid: false, error: 'Nombre de usuario requerido' });
+      }
+    }
+
+    // Validación de contenido significativo en el objeto
+    var rawMensaje = '';
+    if (typeof obj.mensaje === 'string') {
+      rawMensaje = obj.mensaje.trim();
+    } else if (obj.mensaje != null) {
+      rawMensaje = String(obj.mensaje).trim();
+    }
+
+    if (!rawMensaje) {
+      return JSON.stringify({
+        valid: false,
+        error: 'Mensaje vacío',
+        nombre: this.sanitizeName(obj.nombre),
+        mensaje: '',
+        color: this.sanitizeColor(obj.color),
+        tipo: 'text'
+      });
+    }
+
     // Normalización de campos
-    var rawMensaje = typeof obj.mensaje === 'string' ? obj.mensaje.trim() : (obj.mensaje != null ? String(obj.mensaje).trim() : '');
     var safeNombre = this.sanitizeName(obj.nombre);
     var safeColor = this.sanitizeColor(obj.color);
 
