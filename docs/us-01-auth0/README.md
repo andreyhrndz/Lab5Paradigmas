@@ -92,7 +92,7 @@ Las copias siguientes fueron redaccionadas para eliminar nombre, correo e inform
 
 ## Vercel: preparación y límite de validación
 
-El proyecto Vercel debe configurarse con **Root Directory: `despues`**. Use Node.js compatible con el `package.json` y registre las cinco variables `AUTH0_*` como variables privadas en Project Settings. Cuando Vercel asigne el dominio, agregue, sin sustituir localhost:
+El proyecto Vercel debe configurarse con **Root Directory: `despues`**, Node.js 20 o superior (según `package.json`) y las cinco variables `AUTH0_*` como variables privadas en Project Settings. Cuando Vercel asigne el dominio, agregue, sin sustituir localhost:
 
 ```text
 Allowed Callback URLs: https://DOMINIO/callback
