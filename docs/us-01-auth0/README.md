@@ -5,7 +5,7 @@ UNA Chat usa Auth0 como cliente OIDC confidencial para que una persona inicie se
 ## Estado verificable
 
 - El flujo real local con Google, consentimiento Auth0, retorno al chat, perfil, mensajes y logout fue comprobado manualmente por el propietario el 2026-10-29.
-- `npm run test:all` ejecuta **102 pruebas: 54 unitarias, 37 de integración y 11 E2E: 102/102 aprobadas (0 fallos)**.
+- `npm run test:all` ejecuta **105 pruebas: 54 unitarias, 40 de integración y 11 E2E: 105/105 aprobadas (0 fallos)**.
 - `node --test factory/tests/factory.test.mjs` ejecuta **20/20 aprobadas**.
 - El flujo equivalente en Vercel aún no se ha desplegado ni probado. No debe declararse funcional hasta completar la sección de verificación de producción.
 
@@ -40,6 +40,7 @@ Para evitar que una conexión Socket.IO conserve autorización indefinidamente t
 
 - **Export HTTP Server:** [despues/server.js](server.js) exporta directamente la instancia de `http.Server` (`module.exports = defaultServer` con propiedad `.default = defaultServer`), cumpliendo con la especificación oficial de Vercel para WebSocket Functions.
 - **Diagnóstico Estructurado en Runtime Logs:** La inicialización del servidor clasifica errores en categorías seguras (`CONFIG_MISSING`, `CONFIG_INVALID`, `AUTH0_SDK_ERROR`, `RUNTIME_BOOTSTRAP_ERROR`). Ante un fallo de configuración, se registra inmediatamente en los logs de Vercel (`console.error`) sin exponer secretos ni tokens, mientras que el cliente HTTP recibe un `HTTP 500` genérico con `Cache-Control: no-store`.
+- **Inclusión y File Tracing de Recursos en Vercel (`includeFiles`):** Para prevenir el error `ENOENT` en runtime de Vercel, `vercel.json` configura explícitamente `functions.includeFiles` con `{index.html,private-assets/**}`. Adicionalmente, `despues/server.js` implementa `resolveIndexHtmlPath()` y `resolvePrivateAssetsDir()` con literales estáticos de `path.join(__dirname, ...)` que permiten al analizador AST `@vercel/nft` tracear los archivos, y resuelve con opciones seguras `{ dotfiles: 'allow' }` y callbacks de diagnóstico para garantizar la entrega tanto en desarrollo como en despliegues serverless.
 - **Normalización Robusta de URLs:** `AUTH0_ISSUER_BASE_URL` y `AUTH0_BASE_URL` se procesan con `trim()`, anteponiendo `https://` si se ingresa un dominio simple sin esquema (ej. `dev-xxxx.us.auth0.com`), previniendo excepciones sincrónicas de validación Joi en `express-openid-connect` (`TypeError: "issuerBaseURL" must be a valid uri`).
 - **Recursos privados en `private-assets/`:** La documentación de Express en Vercel advierte que `express.static()` no es compatible con el modelo de ejecución serverless de Vercel Functions. Por ello, los archivos bajo `/public/*` se sirven mediante un manejador Express dedicado con `fs.createReadStream`, protegido por `requiresAuth()`, con validación estricta contra ataques de directory traversal (`..`) y cabeceras `Cache-Control: private, no-cache`.
 

@@ -142,6 +142,42 @@ describe('US-01 Auth0 — HTTP y Socket.IO (Integration)', function () {
     assert.strictEqual(typeof serverExport.createUnaChatServer, 'function');
     assert.strictEqual(typeof serverExport.getAuth0Config, 'function');
     assert.strictEqual(typeof serverExport.categorizeAuth0InitError, 'function');
+    assert.strictEqual(typeof serverExport.resolveIndexHtmlPath, 'function');
+    assert.strictEqual(typeof serverExport.resolvePrivateAssetsDir, 'function');
+  });
+
+  it('0.1. Resuelve estáticamente la ruta de index.html y private-assets para Vercel Serverless', function () {
+    const serverExport = require('../../server');
+    const indexPath = serverExport.resolveIndexHtmlPath();
+    const fs = require('fs');
+
+    assert.ok(fs.existsSync(indexPath), `index.html debe existir en la ruta resuelta: ${indexPath}`);
+    const indexContent = fs.readFileSync(indexPath, 'utf8');
+    assert.ok(indexContent.includes('UNA Chat'), 'index.html debe contener el título de UNA Chat');
+
+    const privateDir = serverExport.resolvePrivateAssetsDir();
+    assert.ok(fs.existsSync(privateDir), `private-assets debe existir en la ruta resuelta: ${privateDir}`);
+    const samplePng = require('path').join(privateDir, 'sample.png');
+    assert.ok(fs.existsSync(samplePng), `sample.png debe existir en: ${samplePng}`);
+  });
+
+  it('0.2. Valida la configuración de includeFiles en vercel.json para empaquetado de artefactos', function () {
+    const fs = require('fs');
+    const path = require('path');
+    const vercelConfigPath = path.resolve(__dirname, '../../vercel.json');
+
+    assert.ok(fs.existsSync(vercelConfigPath), 'despues/vercel.json debe existir');
+    const config = JSON.parse(fs.readFileSync(vercelConfigPath, 'utf8'));
+    assert.ok(config.functions, 'vercel.json debe configurar la propiedad functions');
+    assert.ok(config.functions['server.js'], 'functions debe definir opciones para server.js');
+    assert.ok(
+      config.functions['server.js'].includeFiles.includes('index.html'),
+      'includeFiles debe incluir index.html',
+    );
+    assert.ok(
+      config.functions['server.js'].includeFiles.includes('private-assets/**'),
+      'includeFiles debe incluir private-assets/**',
+    );
   });
 
   it('1. Informa una configuración incompleta sin crear una configuración ficticia', function () {
@@ -318,6 +354,17 @@ describe('US-01 Auth0 — HTTP y Socket.IO (Integration)', function () {
 
     const traversalAttempt = await httpRequest(port, '/public/%2e%2e/server.js', { 'x-test-auth': 'verified' });
     assert.ok([403, 404].includes(traversalAttempt.status));
+  });
+
+  it('3.5. Entrega index.html en GET / y GET /chat respondiendo 200 sin arrojar ENOENT', async function () {
+    const landing = await httpRequest(port, '/');
+    assert.strictEqual(landing.status, 200);
+    assert.ok(landing.body.toLowerCase().includes('<!doctype html>'));
+    assert.ok(landing.body.includes('Iniciar sesión con Auth0'));
+
+    const authedChat = await httpRequest(port, '/chat', { 'x-test-auth': 'verified' });
+    assert.strictEqual(authedChat.status, 200);
+    assert.ok(authedChat.body.toLowerCase().includes('<!doctype html>'));
   });
 
   it('4. Expone sólo el perfil permitido desde un contexto Auth0 ya validado', async function () {

@@ -257,6 +257,38 @@ function getAuthenticatedMessage(msg, user) {
   return JSON.stringify(parsed);
 }
 
+function resolveIndexHtmlPath() {
+  // Use a static string literal so @vercel/nft traces index.html at build time.
+  const staticPath = path.join(__dirname, 'index.html');
+  const candidates = [
+    staticPath,
+    path.join(process.cwd(), 'despues', 'index.html'),
+    path.join(process.cwd(), 'index.html'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return staticPath;
+}
+
+function resolvePrivateAssetsDir() {
+  // Use a static string literal so @vercel/nft traces private-assets at build time.
+  const staticDir = path.join(__dirname, 'private-assets');
+  const candidates = [
+    staticDir,
+    path.join(process.cwd(), 'despues', 'private-assets'),
+    path.join(process.cwd(), 'private-assets'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return staticDir;
+}
+
 function createUnaChatServer(options = {}) {
   const environment = options.environment || process.env;
   const authConfig =
@@ -280,15 +312,40 @@ function createUnaChatServer(options = {}) {
   // ASVS 10.1.2: auth() owns state, nonce, PKCE and callback validation.
   app.use(authMiddleware);
 
+  const indexHtmlFile = resolveIndexHtmlPath();
+  const privateAssetsDir = resolvePrivateAssetsDir();
+
   // Auth0's SDK registers /login, /callback and /logout itself. There are no
   // duplicate application routes for these endpoints.
   // The landing page contains no transcript or user data. It can explain how
   // to authenticate without turning the private chat into a static resource.
-  app.get('/', function serveAuthenticationLanding(_req, res) {
-    res.sendFile('index.html', { root: __dirname });
+  app.get('/', function serveAuthenticationLanding(_req, res, next) {
+    res.sendFile(
+      path.basename(indexHtmlFile),
+      { root: path.dirname(indexHtmlFile), dotfiles: 'allow' },
+      function handleSendError(err) {
+        if (err) {
+          console.error(
+            `[UNA-CHAT-STATIC-ERROR] Failed to serve index.html from ${indexHtmlFile}: ${err.message}`,
+          );
+          return next(err);
+        }
+      },
+    );
   });
-  app.get('/chat', requiresAuth(), function servePrivateChat(_req, res) {
-    res.sendFile('index.html', { root: __dirname });
+  app.get('/chat', requiresAuth(), function servePrivateChat(_req, res, next) {
+    res.sendFile(
+      path.basename(indexHtmlFile),
+      { root: path.dirname(indexHtmlFile), dotfiles: 'allow' },
+      function handleSendError(err) {
+        if (err) {
+          console.error(
+            `[UNA-CHAT-STATIC-ERROR] Failed to serve private chat index.html from ${indexHtmlFile}: ${err.message}`,
+          );
+          return next(err);
+        }
+      },
+    );
   });
   app.get('/api/user', function getCurrentUser(req, res) {
     const user = getAuthenticatedUser(req);
@@ -322,7 +379,6 @@ function createUnaChatServer(options = {}) {
     socket.data.sessionVerifiedUntil = Date.now() + socketSessionMaxAgeMs;
     return res.status(204).end();
   });
-  const privateAssetsDir = path.resolve(__dirname, 'private-assets');
   app.use('/public', requiresAuth(), function servePrivateAsset(req, res, next) {
     // Vercel Serverless Functions ignore express.static() and serve root public/
     // from CDN before Express. To prevent CDN bypass while ensuring compatibility
@@ -467,6 +523,8 @@ defaultServer.server = defaultServer;
 defaultServer.createUnaChatServer = createUnaChatServer;
 defaultServer.getAuth0Config = getAuth0Config;
 defaultServer.categorizeAuth0InitError = categorizeAuth0InitError;
+defaultServer.resolveIndexHtmlPath = resolveIndexHtmlPath;
+defaultServer.resolvePrivateAssetsDir = resolvePrivateAssetsDir;
 defaultServer.getAuthenticatedMessage = getAuthenticatedMessage;
 defaultServer.applyBrowserSecurityHeaders = applyBrowserSecurityHeaders;
 defaultServer.hasTrustedSocketOrigin = hasTrustedSocketOrigin;

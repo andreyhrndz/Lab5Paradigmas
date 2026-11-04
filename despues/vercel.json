@@ -1,4 +1,18 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "fluid": true
+  "fluid": true,
+  "functions": {
+    "server.js": {
+      "includeFiles": "{index.html,private-assets/**}"
+    },
+    "despues/server.js": {
+      "includeFiles": "despues/{index.html,private-assets/**}"
+    },
+    "index.js": {
+      "includeFiles": "{index.html,private-assets/**}"
+    },
+    "api/**": {
+      "includeFiles": "{index.html,private-assets/**}"
+    }
+  }
 }
