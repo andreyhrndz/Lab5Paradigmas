@@ -103,7 +103,7 @@ FoFo y nuestro Harness resuelven esto dividiendo las responsabilidades en dos ro
   ```bash
   python harness/fofo/scripts/test-lock --write --changed "despues/test/unit/**/*.test.js"
   ```
-  Esto genera [`TEST-LOCK.json`](../harness/fofo/policy.json) con los hashes SHA-256 de cada archivo de prueba y bloquea su edición.
+  Esto genera [`TEST-LOCK.json`](../TEST-LOCK.json) con los hashes SHA-256 de cada archivo de prueba y bloquea su edición.
 
 ### 3.2. Rol: Author (`fofo-author`)
 - **Restricción de Contexto:** El Author recibe la especificación y el código fuente existente, pero **NUNCA** puede alterar las pruebas congeladas.

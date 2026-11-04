@@ -14,6 +14,7 @@
 
 - 🚀 **Aplicación Desplegada en Producción (Vercel):** [https://lab5-paradigmas-ten.vercel.app/](https://lab5-paradigmas-ten.vercel.app/)
 - 📦 **Repositorio Oficial en GitHub:** [https://github.com/andreyhrndz/Lab5Paradigmas](https://github.com/andreyhrndz/Lab5Paradigmas)
+- 🔀 **Pull Request de Entrega Académica:** [PR #18 en GitHub](https://github.com/andreyhrndz/Lab5Paradigmas/pull/18)
 - 🔀 **Pull Request Principal de Implementación (Merge a main):** [PR #17 en GitHub](https://github.com/andreyhrndz/Lab5Paradigmas/pull/17)
 - 📸 **Catálogo Consolidado de Evidencias:** [docs/evidence/README.md](evidence/README.md)
 - 🧠 **Informe Técnico del Laboratorio 6 (Memoria y Harness):** [docs/lab6/README.md](lab6/README.md)
@@ -48,7 +49,7 @@ El proyecto consistió en la transformación, aseguramiento, orquestación agén
    - Auditoría SCA de dependencias con Snyk y `npm audit` (**0 vulnerabilidades**).
 4. **Harness Autónomo (OpenSpec + FoFo):**
    - Orquestación agéntica con separación de roles (Judge vs Author).
-   - Bloqueo criptográfico de pruebas (`test-lock` con hashes SHA-256).
+   - Bloqueo criptográfico de pruebas (`test-lock` con hashes SHA-256 en `TEST-LOCK.json`).
    - Implementación concurrente y aislada en Git Worktrees de los requerimientos:
      - **REQ-010:** Impedir mensajes vacíos.
      - **REQ-011:** Exigir nombre de usuario.
@@ -64,11 +65,10 @@ El proyecto consistió en la transformación, aseguramiento, orquestación agén
    - Bitácoras diarias fechadas (`brain/daily-log/YYYY-MM-DD.md`) en zona horaria `America/Costa_Rica`.
    - Estado dinámico centralizado en `brain/daily-log/status.md`.
    - Política estricta de Cero Secretos en el vault.
-3. **Software Factory Agéntica:**
-   - Flujo gobernado por *Spec-Driven Development* (SDD).
-   - Comité de 4 revisores independientes: **Security Reviewer**, **UX Reviewer**, **UI Reviewer** y **Code Reviewer**.
-   - Compuertas automatizadas de trazabilidad (`trace-gate`) y verificación de integridad.
-   - Manifiesto de liberación formal `release.json` con compuerta humana aprobada.
+3. **Articulación de Herramientas Agénticas (`rsc-harness` y Software Factory):**
+   - `rsc-harness` (@ericrisco/rsc@3.6.0) operando a nivel de workspace con 31 skills instaladas y memoria cableada hacia `brain/`.
+   - Software Factory personalizada en `factory/` gobernada por la Constitución SDD (`02-DOCS/wiki/sdd/constitution.md`), ejecutando intake, spec, TDD y evaluación por 4 revisores independientes (**Security**, **UX**, **UI**, **Code**).
+   - Manifiesto de liberación formal `release.json` con compuerta humana aprobada para el run `f-20261028-2783`.
 4. **Historia de Usuario US-01: Autenticación Social con Auth0 + Google:**
    - Integración de Auth0 como cliente OpenID Connect (OIDC) confidencial del lado del servidor con `express-openid-connect`.
    - Sesión protegida mediante cookie cifrada `HttpOnly` y `SameSite=Lax`.
@@ -84,38 +84,42 @@ El proyecto consistió en la transformación, aseguramiento, orquestación agén
 
 ## 3. Matriz Consolidada de Cumplimiento de Requisitos
 
+Para garantizar una evaluación rigurosa y transparente, a continuación se diferencian formalmente las **evidencias versionadas en GitHub** de las **verificaciones ejecutables en el workspace local** y las **comprobaciones operativas en la nube**:
+
 ### 3.1. Requisitos del Laboratorio 5
 
-| Requisito Oficial | Descripción | Implementación Técnica | Estado | Evidencia |
-|---|---|---|:---:|:---:|
-| **Paso 1 y 2** | Detección y evidencia de inyección de scripts (XSS). | Reproducción en `antes/` con payload `<script>alert(...)`. | **CUMPLIDO** | [evidencia1.png](evidence/evidencia1.png) |
-| **Paso 3 y 4** | Creación de rama y estructura de directorios (`antes/` y `despues/`). | `antes/` inmutable como testigo histórico; desarrollo seguro en `despues/`. | **CUMPLIDO** | [README.md](../README.md) |
-| **Paso 5 y 6** | Remediación de XSS y saneamiento HTML en `unalib.js`. | Sustitución de caracteres HTML peligrosos y eliminación de `.html()` en index. | **CUMPLIDO** | [security-findings.md](security-findings.md) |
-| **Paso 7** | Soporte multimedia seguro (imágenes y YouTube). | Sanitización de URLs, renderizado DOM nativo e `iframe` sandbox. | **CUMPLIDO** | [evidencia-5.png](evidence/evidencia-5.png) |
-| **Paso 8** | Pruebas unitarias automatizadas con Mocha. | 41 pruebas unitarias sobre `unalib.js` cubriendo casos normales y maliciosos. | **CUMPLIDO** | [evidencia-2.png](evidence/evidencia-2.png) |
-| **Paso 9** | Pruebas de integración con Socket.IO. | 8 pruebas de integración sobre servidor dinámico y cliente `socket.io-client`. | **CUMPLIDO** | [evidencia-3.png](evidence/evidencia-3.png) |
-| **Paso 10** | Pruebas End-to-End con Playwright. | 5 pruebas E2E en Chromium automatizando envío de texto, multimedia y XSS. | **CUMPLIDO** | [evidencia-4.png](evidence/evidencia-4.png) |
-| **Paso 11** | Auditoría SCA y remediación de dependencias. | Escaneo con Snyk y `npm audit` confirmando 0 vulnerabilidades abiertas. | **CUMPLIDO** | [evidencia-snyk.png](evidence/evidencia-snyk.png) |
-| **REQ-010** | Impedir el envío de mensajes vacíos. | Validación cliente y servidor en `unalib.js` y `index.html`. | **CUMPLIDO** | Suite automatizada |
-| **REQ-011** | Exigir nombre de usuario válido. | Comprobación de identidad no vacía antes de emitir mensajes. | **CUMPLIDO** | Suite automatizada |
-| **REQ-012** | Limitar mensajes a un máximo de 280 caracteres. | Validación de longitud estricta en frontend y backend. | **CUMPLIDO** | Suite automatizada |
+| Requisito Oficial | Descripción Técnica | Estado | Evidencia Versionada en GitHub | Verificación Ejecutable en Workspace Local |
+|---|---|:---:|:---:|:---:|
+| **Paso 1 y 2** | Detección y evidencia de inyección XSS en aplicación original. | **CUMPLIDO** | Captura [evidencia1.png](evidence/evidencia1.png) | Ejecución manual de `antes/`: envío de `<script>alert(...)` muestra modal en navegador |
+| **Paso 3 y 4** | Aislamiento en carpetas `antes/` (inmutable) y `despues/` (desarrollo). | **CUMPLIDO** | Estructura de directorios en [README.md](../README.md) | `git status` y árbol de directorios local |
+| **Paso 5 y 6** | Remediación XSS y saneamiento HTML en `unalib.js`. | **CUMPLIDO** | Código en `despues/libs/unalib.js` y [security-findings.md](security-findings.md) | Pruebas unitarias especializadas en saneamiento |
+| **Paso 7** | Soporte multimedia seguro (imágenes y YouTube). | **CUMPLIDO** | Captura [evidencia-5.png](evidence/evidencia-5.png) | Renderizado en navegador local de iframe sandbox y etiquetas `<img>` |
+| **Paso 8** | Pruebas unitarias automatizadas con Mocha. | **CUMPLIDO** | Captura [evidencia-2.png](evidence/evidencia-2.png) | `npm run test:unit` en `despues/` (**54/54 PASS**) |
+| **Paso 9** | Pruebas de integración con Socket.IO. | **CUMPLIDO** | Captura [evidencia-3.png](evidence/evidencia-3.png) | `npm run test:integration` en `despues/` (**40/40 PASS**) |
+| **Paso 10** | Pruebas End-to-End con Playwright en Chromium. | **CUMPLIDO** | Captura [evidencia-4.png](evidence/evidencia-4.png) | `npm run test:e2e` en `despues/` (**11/11 PASS**) |
+| **Paso 11** | Auditoría SCA y remediación de vulnerabilidades. | **CUMPLIDO** | Captura [evidencia-snyk.png](evidence/evidencia-snyk.png) | `npx snyk test` y `npm audit --json` (0 vulnerabilidades) |
+| **REQ-010** | Impedir el envío de mensajes vacíos. | **CUMPLIDO** | `openspec/changes/req-010/` y `despues/test/unit/req-010.test.js` | Ejecución de prueba unitaria y suite E2E de REQ-010 |
+| **REQ-011** | Exigir nombre de usuario válido. | **CUMPLIDO** | `openspec/changes/req-011/` y `despues/test/unit/req-011.test.js` | Ejecución de prueba unitaria y suite E2E de REQ-011 |
+| **REQ-012** | Limitar mensajes a un máximo de 280 caracteres. | **CUMPLIDO** | `openspec/changes/req-012/` y `despues/test/unit/req-012.test.js` | Ejecución de prueba unitaria y suite E2E de REQ-012 |
+
+---
 
 ### 3.2. Requisitos del Laboratorio 6 (Especificación Oficial `Lab8.docx`)
 
-| Sección en `Lab8.docx` | Requisito Oficial | Implementación Técnica | Estado | Evidencia |
-|---|---|---|:---:|:---:|
-| **Sección 1** | Preparar el espacio de trabajo con carpeta `Repos/`, `AGENTS.md` y `.gitignore`. | Workspace con arquitectura *Progressive Disclosure*, `Repos/AGENTS.md` y `.gitignore` progresivo. | **CUMPLIDO** | [lab6/README.md](lab6/README.md#2-etapa-1--preparación-del-espacio-de-trabajo-agéntico) |
-| **Sección 2** | Incorporar la memoria del proyecto (Obsidian Second Brain). | Vault Obsidian en `brain/` con logs diarios, `status.md` y enlace bidireccional. | **CUMPLIDO** | [lab6/README.md](lab6/README.md#3-etapa-2--memoria-del-proyecto-obsidian-second-brain) |
-| **Sección 3** | Preparar y operar el harness con compuertas de calidad. | Software Factory con SDD, TDD, 4 revisores independientes y compuerta humana. | **CUMPLIDO** | [lab6/README.md](lab6/README.md#4-etapa-3--harness-y-software-factory-agéntica) |
-| **US-01 / Crit. 1** | Cuenta personal Auth0 y Regular Web App para UNA Chat. | Tenant `dev-0cns5htp3msxjw75` con app UNA Chat configurada. | **CUMPLIDO** | [evidencia-6.png](evidence/evidencia-6.png) |
-| **US-01 / Crit. 2** | Habilitar al menos un proveedor de autenticación social. | Conexión social `google-oauth2` configurada y activa. | **CUMPLIDO** | [01-consentimiento-auth0-redactada.png](evidence/us-01-auth0/01-consentimiento-auth0-redactada.png) |
-| **US-01 / Crit. 3** | URLs de retorno, logout y orígenes permitidos en local y Vercel. | URLs registradas para `http://localhost:3000` y `https://lab5-paradigmas-ten.vercel.app`. | **CUMPLIDO** | [evidencia-6.png](evidence/evidencia-6.png) |
-| **US-01 / Crit. 4** | Login local con proveedor social y retorno al chat autenticado. | Flujo OIDC local verificado con suite E2E e integración. | **CUMPLIDO** | [02-chat-autenticado-redactada.png](evidence/us-01-auth0/02-chat-autenticado-redactada.png) |
-| **US-01 / Crit. 5** | Visualización de identidad autenticada y opción de logout. | Barra superior muestra avatar, nombre autenticado y enlace `/logout`. | **CUMPLIDO** | [02-chat-autenticado-redactada.png](evidence/us-01-auth0/02-chat-autenticado-redactada.png) |
-| **US-01 / Crit. 6** | Acceso al chat requiere autenticación obligatoria. | Rutas protegidas por `requiresAuth()`; sockets anónimos rechazados. | **CUMPLIDO** | [evidencia-7.png](evidence/evidencia-7.png) |
-| **US-01 / Crit. 7** | Despliegue en Vercel con el mismo flujo funcional. | Aplicación en producción operativa en `lab5-paradigmas-ten.vercel.app`. | **CUMPLIDO** | [evidencia-7.png](evidence/evidencia-7.png) |
-| **US-01 / Crit. 8** | Configuración por variables de entorno sin secretos en repo ni browser. | Variables administradas privadamente; `.env.example` limpio; 0 secretos en Git. | **CUMPLIDO** | `despues/.env.example` |
-| **US-01 / Crit. 9** | Manejo claro de cancelación y errores OAuth con reintento. | Intercepción de errores en `/callback` con mensaje amigable y reintento. | **CUMPLIDO** | Suites de integración |
+| Sección en `Lab8.docx` | Requisito Oficial | Estado | Evidencia Versionada en GitHub | Verificación Ejecutable en Workspace / Cloud |
+|---|---|:---:|:---:|:---:|
+| **Sección 1** | Preparar el espacio de trabajo con `Repos/`, `AGENTS.md` y `.gitignore` progresivo. | **CUMPLIDO** | Documentación de arquitectura en [lab6/README.md](lab6/README.md#2-etapa-1--preparación-del-espacio-de-trabajo-agéntico) | Inspección de `my-team-workspace/.gitignore` y aislamiento de `Repos/` |
+| **Sección 2** | Incorporar la memoria del proyecto (Obsidian Second Brain). | **CUMPLIDO** | Documentación del vault en [lab6/README.md](lab6/README.md#3-etapa-2--memoria-del-proyecto-obsidian-second-brain) | Verificación local en `brain/`: bitácoras `brain/daily-log/`, snapshot `status.md` e `INDEX.md` |
+| **Sección 3** | Preparar y operar `rsc-harness` y la Software Factory. | **CUMPLIDO** | Especificación técnica en [lab6/README.md](lab6/README.md#4-etapa-3--diferenciación-y-articulación-de-harnesses-y-software-factory) | Diagnóstico CLI `npx @ericrisco/rsc doctor` (`healthy: true`), `node --test factory/tests/factory.test.mjs` (20/20 PASS) y revisión de `release.json` |
+| **US-01 / Crit. 1** | Cuenta personal Auth0 y Regular Web App para UNA Chat. | **CUMPLIDO** | Captura [evidencia-6.png](evidence/evidencia-6.png) | Verificación de configuración en consola web de Auth0 |
+| **US-01 / Crit. 2** | Habilitar al menos un proveedor de autenticación social (Google). | **CUMPLIDO** | Captura [01-consentimiento-auth0-redactada.png](evidence/us-01-auth0/01-consentimiento-auth0-redactada.png) | Redirección interactiva a pantalla OAuth de Google |
+| **US-01 / Crit. 3** | URLs de callback, logout y orígenes permitidos en local y Vercel. | **CUMPLIDO** | Captura [evidencia-6.png](evidence/evidencia-6.png) | Verificación de URLs en Auth0 Application Settings |
+| **US-01 / Crit. 4** | Login local con proveedor social y retorno al chat autenticado. | **CUMPLIDO** | Captura [02-chat-autenticado-redactada.png](evidence/us-01-auth0/02-chat-autenticado-redactada.png) | Ejecución de suite Playwright E2E local: `npm run test:e2e` |
+| **US-01 / Crit. 5** | Visualización de identidad autenticada y opción de logout. | **CUMPLIDO** | Captura [02-chat-autenticado-redactada.png](evidence/us-01-auth0/02-chat-autenticado-redactada.png) | Verificación en navegador y en suite E2E (`auth-ui.spec.js`) |
+| **US-01 / Crit. 6** | Acceso al chat requiere autenticación obligatoria. | **CUMPLIDO** | Captura [evidencia-7.png](evidence/evidencia-7.png) | Pruebas de integración: 40 casos validando rechazo anónimo, cookie falsa y upgrade directo |
+| **US-01 / Crit. 7** | Despliegue en Vercel con el mismo flujo funcional. | **CUMPLIDO** | Captura [evidencia-7.png](evidence/evidencia-7.png) | Comprobación en vivo en producción: [https://lab5-paradigmas-ten.vercel.app/](https://lab5-paradigmas-ten.vercel.app/) |
+| **US-01 / Crit. 8** | Configuración por variables de entorno sin secretos en repo ni browser. | **CUMPLIDO** | Plantilla versionada [`despues/.env.example`](../despues/.env.example) | Escaneo determinista de secretos: 0 credenciales expuestas en Git |
+| **US-01 / Crit. 9** | Manejo claro de cancelación y errores OAuth con reintento. | **CUMPLIDO** | Especificación en [us-01-auth0/README.md](us-01-auth0/README.md) | Pruebas automatizadas de intercepción de error en `/callback` |
 
 ---
 
@@ -203,6 +207,6 @@ Todas las capturas se encuentran debidamente alojadas dentro del repositorio en 
 La entrega consolida con éxito los objetivos formativos de ambos laboratorios:
 - Se erradicaron de forma demostrable las vulnerabilidades de seguridad originales de UNA Chat mediante una arquitectura de defensa en profundidad.
 - Se implementó un arnés de pruebas automatizado de 105 aserciones cubriendo todos los niveles de la pirámide de testing (unitario, integración y E2E).
-- Se diseñó y operó una infraestructura agéntica colaborativa con memoria persistente (Second Brain) y compuertas automáticas de calidad gobernadas por especificaciones formales.
-- Se integró autenticación social confidencial mediante Auth0 con resolución innovadora para la sincronización de sesiones en WebSockets.
+- Se diseñó y operó una infraestructura agéntica colaborativa articulando `rsc-harness` (@ericrisco/rsc 3.6.0), memoria persistente (Second Brain en Obsidian) y Software Factory gobernada por la Constitución SDD.
+- Se integró autenticación social confidencial mediante Auth0 con resolución de permisos temporales en WebSockets.
 - La aplicación se encuentra en operación real en la nube bajo la infraestructura serverless de Vercel Production con un comportamiento robusto y verificado.
