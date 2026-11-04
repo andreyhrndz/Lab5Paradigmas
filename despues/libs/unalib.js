@@ -132,32 +132,91 @@ module.exports = {
       tipo: 'text'
     };
 
-    if (!msg) {
-      return JSON.stringify(defaultResponse);
-    }
-
-    if (typeof msg !== 'string') {
+    if (msg === null || msg === undefined || typeof msg === 'boolean') {
       return JSON.stringify(defaultResponse);
     }
 
     var obj;
     try {
-      obj = JSON.parse(msg);
+      obj = typeof msg === 'string' ? JSON.parse(msg) : msg;
       if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+        var strMsg = String(msg).trim();
+        if (!strMsg) {
+          return JSON.stringify({
+            valid: false,
+            error: 'Mensaje vacío',
+            nombre: 'Anonimo',
+            mensaje: '',
+            color: '#000000',
+            tipo: 'text'
+          });
+        }
         obj = { mensaje: String(msg) };
       }
     } catch (e) {
       // Cadena de texto plano o JSON malformado
+      var str = String(msg).trim();
+      if (!str) {
+        return JSON.stringify({
+          valid: false,
+          error: 'Mensaje vacío',
+          nombre: 'Anonimo',
+          mensaje: '',
+          color: '#000000',
+          tipo: 'text'
+        });
+      }
       return JSON.stringify({
         nombre: 'Anonimo',
-        mensaje: this.sanitizeHtml(msg),
+        mensaje: this.sanitizeHtml(str),
         color: '#000000',
         tipo: 'text'
       });
     }
 
+    // Exigencia de nombre de usuario válido no vacío
+    // Do not invoke a method supplied by an untrusted payload. JSON objects
+    // can legitimately contain a `hasOwnProperty` field, including a value
+    // that is not callable.
+    if (Object.prototype.hasOwnProperty.call(obj, 'nombre')) {
+      if (typeof obj.nombre !== 'string' || !obj.nombre.trim()) {
+        return JSON.stringify({ valid: false, error: 'Nombre de usuario requerido' });
+      }
+    }
+
+    // Validación de contenido significativo en el objeto
+    var rawMensaje = '';
+    if (typeof obj.mensaje === 'string') {
+      rawMensaje = obj.mensaje.trim();
+    } else if (obj.mensaje != null) {
+      rawMensaje = String(obj.mensaje).trim();
+    }
+
+    if (!rawMensaje) {
+      return JSON.stringify({
+        valid: false,
+        error: 'Mensaje vacío',
+        nombre: this.sanitizeName(obj.nombre),
+        mensaje: '',
+        color: this.sanitizeColor(obj.color),
+        tipo: 'text'
+      });
+    }
+
     // Normalización de campos
-    var rawMensaje = typeof obj.mensaje === 'string' ? obj.mensaje.trim() : (obj.mensaje != null ? String(obj.mensaje).trim() : '');
+    
+    // Validación de longitud máxima (REQ-012: máximo 280 caracteres)
+    if (rawMensaje.length > 280) {
+      return JSON.stringify({
+        valid: false,
+        error: 'El mensaje es demasiado largo (máximo 280 caracteres)',
+        nombre: this.sanitizeName(obj.nombre),
+        mensaje: rawMensaje.slice(0, 280),
+        color: this.sanitizeColor(obj.color),
+        tipo: 'text'
+      });
+    }
+
     var safeNombre = this.sanitizeName(obj.nombre);
     var safeColor = this.sanitizeColor(obj.color);
 

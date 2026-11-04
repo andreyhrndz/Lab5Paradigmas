@@ -10,6 +10,8 @@ module.exports = defineConfig({
     timeout: 5000
   },
   fullyParallel: false,
+  workers: 1,
+  globalTeardown: './test/e2e/auth-test-global-teardown.js',
   reporter: [
     ['list'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }]
@@ -20,10 +22,11 @@ module.exports = defineConfig({
     screenshot: 'on',
   },
   webServer: {
-    command: 'node server.js',
+    command: 'node test/e2e/auth-test-server.js',
     url: `http://localhost:${port}`,
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 15000,
+    gracefulShutdown: { signal: 'SIGTERM', timeout: 1000 },
   },
   projects: [
     {

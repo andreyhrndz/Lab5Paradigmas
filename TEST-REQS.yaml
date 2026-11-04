@@ -1,0 +1,16 @@
+requirements:
+  - id: REQ-010
+    intents:
+      - "debe invalidar entradas de mensajes vacíos o espacios en unalib"
+      - "el servidor no debe retransmitir mensajes vacíos por Socket.IO"
+      - "al enviar mensaje vacío no agrega transcript, mantiene campo vacío y solicita escribir"
+  - id: REQ-011
+    intents:
+      - "debe invalidar mensajes con nombre de usuario vacío o espacios en unalib"
+      - "el servidor no debe retransmitir mensajes sin nombre de usuario por Socket.IO"
+      - "al enviar mensaje con username vacío no agrega transcript, mantiene campo vacío y pide nombre"
+  - id: REQ-012
+    intents:
+      - "debe rechazar mensajes de más de 280 caracteres en unalib"
+      - "el servidor no debe retransmitir mensajes de más de 280 caracteres por Socket.IO"
+      - "no agrega mensaje >280 chars al transcript, conserva texto en campo y notifica"

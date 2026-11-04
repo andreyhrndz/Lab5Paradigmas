@@ -1,0 +1,15 @@
+provenance:
+  joint_integration:
+    timestamp: "2026-10-29T02:54:48.226Z"
+    requirements:
+      - REQ-010
+      - REQ-011
+      - REQ-012
+    source_branches:
+      - feat/req-010 (PR #13)
+      - feat/req-011 (PR #14)
+      - feat/req-012 (PR #15)
+    target_files:
+      - despues/libs/unalib.js
+      - despues/server.js
+      - despues/index.html

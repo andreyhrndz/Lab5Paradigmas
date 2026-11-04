@@ -1,6 +1,8 @@
 # Laboratorio 5 — Paradigmas de Programación (UNA 2026)
 ## Seguridad Informática y Testing Automatizado en UNA Chat
 
+> **Laboratorio 8 — US-01 Auth0:** la continuación incorpora autenticación social con Auth0, sesión validada en Express y Socket.IO, evidencias redactadas y gates de la Software Factory. Consulte la [guía de US-01](docs/us-01-auth0/README.md) para instalación, arquitectura, criterios, seguridad, evidencias y preparación de Vercel.
+
 **Universidad Nacional de Costa Rica (UNA)**  
 **Sede Regional Chorotega — Campus Nicoya**  
 **Carrera:** Ingeniería en Sistemas de la Información  

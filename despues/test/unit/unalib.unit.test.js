@@ -149,6 +149,16 @@ describe('UNA Lib — Pruebas Unitarias de Seguridad y Validación', function ()
       assert.strictEqual(parsed.mensaje, 'Mensaje sin nombre');
     });
 
+    it('debería procesar un payload que sobrescribe hasOwnProperty sin lanzar excepción', function () {
+      const payload = JSON.stringify({
+        hasOwnProperty: null,
+        mensaje: 'Mensaje resistente',
+      });
+
+      const parsed = JSON.parse(val.validateMessage(payload));
+      assert.strictEqual(parsed.mensaje, 'Mensaje resistente');
+    });
+
     it('debería validar y sanitizar el color hexadecimal, rechazando inyecciones CSS', function () {
       const payloadCssInjection = JSON.stringify({
         nombre: 'Atacante',
