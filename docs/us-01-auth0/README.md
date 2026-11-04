@@ -5,14 +5,14 @@ UNA Chat usa Auth0 como cliente OIDC confidencial para que una persona inicie se
 ## Estado verificable
 
 - El flujo real local con Google, consentimiento Auth0, retorno al chat, perfil, mensajes y logout fue comprobado manualmente por el propietario el 2026-10-29.
-- `npm run test:all` ejecutó **54 pruebas unitarias, 27 de integración y 11 E2E: 92/92 aprobadas**.
-- `node --test factory/tests/factory.test.mjs` ejecutó **20/20 aprobadas**.
+- `npm run test:all` ejecuta **97 pruebas: 54 unitarias, 32 de integración y 11 E2E: 97/97 aprobadas (0 fallos)**.
+- `node --test factory/tests/factory.test.mjs` ejecuta **20/20 aprobadas**.
 - El flujo equivalente en Vercel aún no se ha desplegado ni probado. No debe declararse funcional hasta completar la sección de verificación de producción.
 
 ## Arquitectura
 
 ```mermaid
-flowchart LR
+flowchart TD
   Browser[Browser] -->|GET /| Landing[Landing de acceso]
   Landing -->|/login| Auth0[Auth0 + Google]
   Auth0 -->|/callback| SDK[express-openid-connect]
@@ -20,13 +20,26 @@ flowchart LR
   Browser -->|GET /api/user| Express[Express]
   Express -->|req.oidc validado| Profile[Perfil permitido]
   Browser -->|polling inicial con cookie| Engine[Engine.IO]
-  Engine -->|mismo middleware Auth0| Socket[Socket.IO]
-  Socket -->|socket.data.user| Chat[Mensaje con remitente impuesto]
+  Engine -->|mismo middleware Auth0| Socket[Socket.IO Handshake]
+  Browser -->|POST /api/socket/session cada 15s| Refresh[Endpoint HTTP de Renovación]
+  Refresh -->|auth fresca + sub match| Permit[Permiso temporal sessionVerifiedUntil]
+  Socket -->|socket.data.user + permiso activo| Chat[Mensaje con remitente impuesto]
 ```
 
 `/` sólo sirve la pantalla de acceso sin transcript ni datos privados. `/chat` y `/public` requieren `requiresAuth()`. `/api/user` devuelve únicamente `sub`, nombre visible y, si existen, correo y avatar permitidos desde un `req.oidc` previamente validado; responde con `Cache-Control: no-store`.
 
-Socket.IO exige primero un handshake de **polling HTTP** autenticado. En producción, acepta un `Origin` idéntico a `AUTH0_BASE_URL`; Chromium puede omitir ese encabezado en un GET de mismo origen, por lo que se admite únicamente el caso con Fetch Metadata `Sec-Fetch-Site: same-origin` y autoridad de host configurada. El upgrade WebSocket directo, una sesión anónima, un polling sin esas pruebas y una cookie `appSession` falsificada se rechazan. En cada evento se vuelve a consultar el contexto Auth0 del request y el servidor sustituye cualquier `nombre` del cliente por esa identidad.
+### Ciclo de vida y renovación de permisos en Socket.IO
+
+Para evitar que una conexión Socket.IO conserve autorización indefinidamente tras expirar la cookie HTTP o tras cerrar sesión en otra pestaña:
+1. **Handshake inicial:** Socket.IO exige un handshake de **polling HTTP** autenticado con el middleware oficial de Auth0. En producción, verifica el `Origin` configurado o Fetch Metadata `same-origin`.
+2. **Endpoint de renovación `POST /api/socket/session`:** Cada conexión requiere validar su permiso de mensajería a través de una petición HTTP fresca gobernada por `auth()`. La aplicación valida que el sujeto autenticado en HTTP (`user.sub`) coincida exactamente con la identidad original del socket (`socket.data.user.sub`). Peticiones anónimas, sockets inexistentes o intentos de renovar conexiones ajenas se rechazan con HTTP 401.
+3. **Expiración temporal:** El permiso de envío se otorga con un TTL estricto (`socketSessionMaxAgeMs = 30000 ms`). El navegador renueva este permiso cada 15 segundos.
+4. **Desconexión forzada:** Si un socket intenta emitir un mensaje sin un permiso vigente o con sesión vencida, el servidor desconecta inmediatamente la conexión (`socket.disconnect(true)`).
+
+### Entry Point de Vercel y Servido de Recursos Privados
+
+- **Export HTTP Server:** [despues/server.js](server.js) exporta directamente la instancia de `http.Server` (`module.exports = defaultServer` con propiedad `.default = defaultServer`), cumpliendo con la especificación oficial de Vercel para WebSocket Functions.
+- **Recursos privados en `private-assets/`:** La documentación de Express en Vercel advierte que `express.static()` no es compatible con el modelo de ejecución serverless de Vercel Functions. Por ello, los archivos bajo `/public/*` se sirven mediante un manejador Express dedicado con `fs.createReadStream`, protegido por `requiresAuth()`, con validación estricta contra ataques de directory traversal (`..`) y cabeceras `Cache-Control: private, no-cache`.
 
 ## Instalación local
 
@@ -63,10 +76,10 @@ No copie valores de `.env` a documentación, capturas, GitHub ni Vercel CLI. `.e
 - `auth()` del SDK administra state, nonce, PKCE, callback y la cookie cifrada; el proyecto no descifra cookies ni valida JWTs de forma artesanal.
 - Cookies de sesión: `HttpOnly`, `SameSite=Lax`, `path=/`, duración absoluta de 7 días y rolling de 24 horas. Bajo HTTPS se usa `Secure` y el prefijo `__Host-`; HTTP se limita a localhost.
 - `requiresAuth()` controla rutas privadas. El perfil se obtiene de `req.oidc.isAuthenticated()` y `req.oidc.user` sólo después de validación del SDK.
-- Los eventos Socket.IO vuelven a comprobar `req.oidc.isAuthenticated()` antes de retransmitirse y desconectan la sesión cuyo contexto ya no es válido. Un payload que redefine `hasOwnProperty` se rechaza de forma segura; ningún método del objeto no confiable se invoca.
+- Los eventos Socket.IO comprueban la vigencia de `sessionVerifiedUntil` renovada por HTTP antes de retransmitirse y desconectan la sesión vencida. Un payload que redefine `hasOwnProperty` se rechaza de forma segura; ningún método del objeto no confiable se invoca.
 - Las respuestas HTML establecen CSP restrictiva, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, COOP/CORP y HSTS bajo HTTPS de producción. Un error de `/callback` redirige a un aviso genérico de reintento sin reflejar detalles de Auth0.
 - La interfaz usa nodos DOM y `textContent`; URL de multimedia y color se validan. REQ-010, REQ-011 y REQ-012 se comprueban tanto en cliente como servidor.
-- La auditoría `npm audit --json` del 2026-10-29 reportó **0 vulnerabilidades** sobre 213 dependencias resueltas.
+- La auditoría `npm audit --json` reportó **0 vulnerabilidades** sobre dependencias resueltas.
 
 ## Evidencias publicables
 
@@ -90,7 +103,7 @@ Las copias siguientes fueron redaccionadas para eliminar nombre, correo e inform
 | 8 | Variables y secretos | `.env` ignorado; plantilla sin secretos; revisión de archivos publicables limpia. |
 | 9 | Cancelación/error OAuth | Error y cancelación controlados cubiertos por integración/E2E; cancelación real por la persona usuaria sigue pendiente de prueba manual. |
 
-## Vercel: preparación y límite de validación
+## Vercel: preparación, multi-instancia y límite de validación
 
 El proyecto Vercel debe configurarse con **Root Directory: `despues`**, Node.js 20 o superior (según `package.json`) y las cinco variables `AUTH0_*` como variables privadas en Project Settings. Cuando Vercel asigne el dominio, agregue, sin sustituir localhost:
 
@@ -100,9 +113,31 @@ Allowed Logout URLs:   https://DOMINIO
 Allowed Web Origins:   https://DOMINIO
 ```
 
-Vercel anunció disponibilidad general de WebSockets en Functions el 20 de octubre de 2026 y soporte para Socket.IO; esto elimina la incompatibilidad histórica, pero no reemplaza una prueba en el proyecto real. `server.js` es el entry point de Node reconocido por el despliegue zero-config; `vercel.json` sólo declara el esquema actual y Fluid Compute, sin el `builds` heredado. Las funciones Vercel sirven `public/` desde CDN antes de Express: por eso los recursos privados viven en `private-assets/` y siguen pasando por `/public` + `requiresAuth()`. Antes de publicar, pruebe un deployment de preview con el polling autenticado; el servidor no debe aceptar upgrade directo ni desactivar la validación de sesión para adaptarse a Vercel.
+Vercel anunció soporte para WebSockets en Vercel Functions (con Fluid Compute); esto habilita conexiones persistentes, pero introduce consideraciones operacionales clave en arquitecturas distribuidas:
 
-La cookie de sesión es stateless y no depende de memoria de proceso. Sin embargo, el broadcast actual de Socket.IO es local a cada instancia de Function: Vercel puede ubicar clientes en instancias distintas. La comunicación multiinstancia requiere un adaptador compartido (por ejemplo, Redis) y queda fuera de US-01. La compatibilidad operacional de Engine.IO polling + upgrade en Vercel sigue **pendiente de prueba de producción**.
+### Análisis Multi-Instancia en Vercel Serverless
+
+1. **Afinidad de Handshake (Engine.IO Polling):**
+   - El protocolo Engine.IO inicia con peticiones HTTP de polling (`GET` y `POST`) para negociar el `sid`.
+   - Si una solicitud posterior de polling llega a una instancia de Lambda distinta a la que originó el `sid`, responderá `400 Session ID unknown`.
+   - *Mitigación en Vercel:* Con Fluid Compute, las conexiones que efectúan upgrade a WebSocket quedan fijadas (*pinned*) a la misma instancia durante su ciclo de vida.
+2. **Enrutamiento de `/api/socket/session`:**
+   - La petición HTTP `POST /api/socket/session` viaja de forma independiente a la conexión WebSocket.
+   - Si la petición HTTP cae en una instancia diferente a la que mantiene el socket en memoria, la búsqueda en memoria local `io.sockets.sockets.get(socketId)` resultará nula.
+3. **Broadcast entre Instancias (`io.emit`):**
+   - El adaptador en memoria por defecto de Socket.IO solo retransmite a sockets conectados a la misma instancia.
+   - Si el usuario A está conectado a la Instancia 1 y el usuario B a la Instancia 2, los mensajes de A no llegarán a B a menos que exista una capa de transporte compartida.
+
+### Infraestructura Compartida Requerida (Solución Mínima Segura)
+
+Para habilitar escalabilidad horizontal multi-instancia en producción en Vercel, la solución estándar y mínima segura consiste en:
+
+- **Upstash Redis + `@socket.io/redis-adapter`:**
+  - Upstash provee Redis Serverless nativo en Vercel con cifrado TLS obligatorio en tránsito.
+  - Al montar `@socket.io/redis-adapter` en `server.js`, las emisiones `io.emit()` se publican en canales Redis Pub/Sub, distribuyendo los mensajes a todas las instancias activas de Vercel.
+  - Los permisos de socket (`socket_session:<socketId>`) se persisten en Redis con TTL de 30 segundos, permitiendo que cualquier instancia valide la sesión HTTP y renueve el permiso de forma distribuida.
+- **Entorno Actual (Preview Mono-Instancia):**
+  - En entornos de preview de Vercel bajo Fluid Compute con baja concurrencia, una sola instancia atiende las conexiones, permitiendo validar el flujo E2E sin coste adicional de infraestructura externa. La incorporación de Redis queda identificada como el requisito de infraestructura para escalado multi-instancia en producción.
 
 ## Verificación de producción posterior al despliegue
 
@@ -114,6 +149,4 @@ La cookie de sesión es stateless y no depende de memoria de proceso. Sin embarg
 
 ## Memoria y Factory
 
-El Second Brain vive en `brain/`: `daily-log/status.md` mantiene el estado actual y `Working/Tickets and recent work.md` conserva decisiones durables. El rsc-harness histórico del Laboratorio 5 permanece aislado e intacto; su papel es el de arnés previo de OpenSpec/FoFo, no de sustituto de la validación Auth0. La Factory en `factory/` ejecuta intake, spec, TDD, cuatro revisiones independientes, clasificación de riesgo y compuerta humana. Esta historia es de riesgo alto por modificar backend, OAuth y dependencias: requiere aprobación humana antes de release/merge.
-
-La CSP mantiene `unsafe-inline` sólo para el script y estilos ya presentes en esta interfaz estática. Una mejora posterior, fuera de esta historia, sería extraerlos o aplicar nonces/hashes para eliminar esa excepción sin romper la pantalla de login.
+El Second Brain vive en `brain/`: `daily-log/status.md` mantiene el estado actual y `Working/Tickets and recent work.md` conserva decisiones durables. La Factory en `factory/` ejecuta intake, spec, TDD, cuatro revisiones independientes, clasificación de riesgo y compuerta humana. Esta historia es de riesgo alto por modificar backend, OAuth y dependencias: requiere aprobación humana antes de release/merge.

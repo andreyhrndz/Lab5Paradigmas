@@ -3,6 +3,7 @@
 require('dotenv').config();
 
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -249,14 +250,53 @@ function createUnaChatServer(options = {}) {
     socket.data.sessionVerifiedUntil = Date.now() + socketSessionMaxAgeMs;
     return res.status(204).end();
   });
-  app.use(
-    '/public',
-    requiresAuth(),
-    // This directory is deliberately not named `public`: Vercel serves a
-    // top-level public/ directory from its CDN before Express, which would
-    // bypass requiresAuth() for these private resources.
-    express.static(path.resolve(__dirname, 'private-assets')),
-  );
+  const privateAssetsDir = path.resolve(__dirname, 'private-assets');
+  app.use('/public', requiresAuth(), function servePrivateAsset(req, res, next) {
+    // Vercel Serverless Functions ignore express.static() and serve root public/
+    // from CDN before Express. To prevent CDN bypass while ensuring compatibility
+    // in serverless runtimes, private assets reside in private-assets/ and are
+    // streamed directly using fs under the authenticated /public route.
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return next();
+    }
+    const rawSubpath = (req.path || '').replace(/^\/+/, '');
+    const safeSubpath = path.normalize(rawSubpath).replace(/^(\.\.[\/\\])+/, '');
+    const targetPath = path.resolve(privateAssetsDir, safeSubpath);
+
+    if (
+      targetPath !== privateAssetsDir &&
+      !targetPath.startsWith(privateAssetsDir + path.sep)
+    ) {
+      return res.status(403).send('Forbidden');
+    }
+
+    fs.stat(targetPath, (err, stats) => {
+      if (err || !stats.isFile()) {
+        return res.status(404).send('Not Found');
+      }
+
+      const mimeTypes = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.webp': 'image/webp',
+        '.pdf': 'application/pdf',
+        '.css': 'text/css; charset=UTF-8',
+        '.js': 'application/javascript; charset=UTF-8',
+        '.json': 'application/json; charset=UTF-8',
+        '.txt': 'text/plain; charset=UTF-8',
+      };
+      const ext = path.extname(targetPath).toLowerCase();
+      res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+      res.setHeader('Cache-Control', 'private, no-cache');
+
+      const stream = fs.createReadStream(targetPath);
+      stream.on('error', next);
+      stream.pipe(res);
+    });
+  });
   app.use(function handleAuthCallbackError(error, req, res, next) {
     if (req.path === '/callback') {
       // Do not reflect IdP or state-validation details into the browser.
@@ -317,11 +357,26 @@ function createUnaChatServer(options = {}) {
   return { app, http: server, io, authConfig };
 }
 
+let defaultServer;
+try {
+  const defaultRuntime = createUnaChatServer();
+  defaultServer = defaultRuntime.http;
+} catch (_error) {
+  defaultServer = http.createServer();
+}
+
+defaultServer.default = defaultServer;
+defaultServer.server = defaultServer;
+defaultServer.createUnaChatServer = createUnaChatServer;
+defaultServer.getAuth0Config = getAuth0Config;
+defaultServer.getAuthenticatedMessage = getAuthenticatedMessage;
+defaultServer.applyBrowserSecurityHeaders = applyBrowserSecurityHeaders;
+defaultServer.hasTrustedSocketOrigin = hasTrustedSocketOrigin;
+
 if (require.main === module) {
   try {
-    const { http: server } = createUnaChatServer();
     const port = process.env.PORT || 3000;
-    server.listen(port, function() {
+    defaultServer.listen(port, function() {
       console.log('listening on *:' + port);
     });
   } catch (error) {
@@ -330,10 +385,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = {
-  createUnaChatServer,
-  getAuth0Config,
-  getAuthenticatedMessage,
-  applyBrowserSecurityHeaders,
-  hasTrustedSocketOrigin,
-};
+module.exports = defaultServer;

@@ -134,6 +134,15 @@ describe('US-01 Auth0 — HTTP y Socket.IO (Integration)', function () {
     });
   });
 
+  it('0. Exporta la instancia http.Server como export principal compatible con Vercel WebSocket Functions', function () {
+    const serverExport = require('../../server');
+    assert.ok(serverExport instanceof http.Server);
+    assert.strictEqual(serverExport.default, serverExport);
+    assert.strictEqual(serverExport.server, serverExport);
+    assert.strictEqual(typeof serverExport.createUnaChatServer, 'function');
+    assert.strictEqual(typeof serverExport.getAuth0Config, 'function');
+  });
+
   it('1. Informa una configuración incompleta sin crear una configuración ficticia', function () {
     assert.throws(
       () => getAuth0Config({}),
@@ -220,6 +229,19 @@ describe('US-01 Auth0 — HTTP y Socket.IO (Integration)', function () {
     assert.strictEqual(response.status, 302);
     assert.strictEqual(response.headers.location, '/?authError=login_cancelled');
     assert.strictEqual(response.body.includes('Controlled callback failure'), false);
+  });
+
+  it('3.4. Sirve recursos privados de private-assets bajo /public con autenticación activa y previene traversal', async function () {
+    const authedAsset = await httpRequest(port, '/public/sample.png', { 'x-test-auth': 'verified' });
+    assert.strictEqual(authedAsset.status, 200);
+    assert.strictEqual(authedAsset.headers['content-type'], 'image/png');
+    assert.strictEqual(authedAsset.headers['cache-control'], 'private, no-cache');
+
+    const missingAsset = await httpRequest(port, '/public/non-existent-sample.png', { 'x-test-auth': 'verified' });
+    assert.strictEqual(missingAsset.status, 404);
+
+    const traversalAttempt = await httpRequest(port, '/public/%2e%2e/server.js', { 'x-test-auth': 'verified' });
+    assert.ok([403, 404].includes(traversalAttempt.status));
   });
 
   it('4. Expone sólo el perfil permitido desde un contexto Auth0 ya validado', async function () {
