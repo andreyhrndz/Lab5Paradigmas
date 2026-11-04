@@ -1,8 +1,8 @@
 # Arquitectura y Manual Operativo del Harness Autónomo (OpenSpec + FoFo)
 
-**Proyecto:** Laboratorio 5 — Paradigmas de Programación (UNA 2026)  
-**Módulo:** Harness Autónomo de Desarrollo Multiagente  
-**Rama:** [`feat/autonomous-harness`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas)  
+**Proyecto:** Laboratorio 5 — Paradigmas de Programación (UNA 2026)
+**Módulo:** Harness Autónomo de Desarrollo Multiagente
+**Rama:** [`feat/autonomous-harness`](https://github.com/andreyhrndz/Lab5Paradigmas)
 
 ---
 
@@ -17,7 +17,7 @@ Integra de forma operativa dos marcos de trabajo de vanguardia:
 ```mermaid
 flowchart TD
     Req["Requerimiento Formal<br/>(ej. REQ-010)"] --> Orch["Orquestador Autónomo<br/>(harness/core/orchestrator.js)"]
-    
+
     subgraph Isolation ["Capa de Aislamiento y Paralelismo"]
         WT["Git Worktree Exclusivo<br/>(.worktrees/req-xxx)"]
         Port["Puerto Dinámico Aislado<br/>(3100, 3110, 3120...)"]
@@ -103,11 +103,11 @@ FoFo y nuestro Harness resuelven esto dividiendo las responsabilidades en dos ro
   ```bash
   python harness/fofo/scripts/test-lock --write --changed "despues/test/unit/**/*.test.js"
   ```
-  Esto genera [`TEST-LOCK.json`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/fofo/policy.json) con los hashes SHA-256 de cada archivo de prueba y bloquea su edición.
+  Esto genera [`TEST-LOCK.json`](../TEST-LOCK.json) con los hashes SHA-256 de cada archivo de prueba y bloquea su edición.
 
 ### 3.2. Rol: Author (`fofo-author`)
 - **Restricción de Contexto:** El Author recibe la especificación y el código fuente existente, pero **NUNCA** puede alterar las pruebas congeladas.
-- **Objetivo:** Implementar código en [`despues/libs/unalib.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/despues/libs/unalib.js) o [`despues/index.html`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/despues/index.html) hasta que la suite pase a verde.
+- **Objetivo:** Implementar código en [`despues/libs/unalib.js`](../despues/libs/unalib.js) o [`despues/index.html`](../despues/index.html) hasta que la suite pase a verde.
 - **Control Antifraude:** Antes de aceptar cualquier solución, el gate `test-lock` compara los hashes actuales contra `TEST-LOCK.json`. Si el Author intentó modificar, borrar o flexibilizar una prueba para que pase, el gate emite un **código de salida 1 (HARD FAIL)** y aborta el trabajo.
 
 ### 3.3. Rol: Referee (Compuertas Automáticas de FoFo)
@@ -116,7 +116,7 @@ FoFo y nuestro Harness resuelven esto dividiendo las responsabilidades en dos ro
   - `trace-gate`: Asegura que cada requisito tenga pruebas asociadas.
   - `test-lock`: Garantiza que las pruebas no fueron manipuladas.
   - `secret-scan`: Garantiza ausencia de claves AWS, tokens de GitHub o credenciales.
-- Registra el manifiesto [`PROVENANCE.yaml`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/agents/agent-adapter.js) certificando la autoría independiente.
+- Registra el manifiesto [`PROVENANCE.yaml`](../harness/agents/agent-adapter.js) certificando la autoría independiente.
 
 ---
 
@@ -127,7 +127,7 @@ El harness permite ejecutar de forma concurrente los tres requerimientos del lab
 1. **Git Worktrees Exclusivos:**
    Cada trabajo se ejecuta en su propio directorio físico (`.worktrees/job-xxx`), montado sobre una rama Git independiente (`feat/req-xxx`). No hay conflicto de índices de Git ni sobreescritura de archivos locales.
 2. **Puertos Dinámicos Aislados:**
-   El módulo [`PortAllocator`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/core/port-allocator.js) comprueba la disponibilidad en el sistema y asigna un puerto TCP exclusivo a cada trabajo (ejemplo: 3100 para REQ-010, 3110 para REQ-011, 3120 para REQ-012), transmitiéndolo a través de la variable de entorno `PORT`.
+   El módulo [`PortAllocator`](../harness/core/port-allocator.js) comprueba la disponibilidad en el sistema y asigna un puerto TCP exclusivo a cada trabajo (ejemplo: 3100 para REQ-010, 3110 para REQ-011, 3120 para REQ-012), transmitiéndolo a través de la variable de entorno `PORT`.
 3. **Persistencia de Estados y Logs:**
    Cada trabajo mantiene su propio archivo de estado (`.harness/jobs/<job-id>/state.json`) y registros independientes, lo que impide que un error en un trabajo afecte a los demás.
 
@@ -169,7 +169,7 @@ node harness/cli.js integrate feat/req-010 feat/req-011 feat/req-012
 
 ## 7. Manual de Comandos de la CLI
 
-El harness se opera mediante la interfaz de línea de comandos [`harness/cli.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/cli.js):
+El harness se opera mediante la interfaz de línea de comandos [`harness/cli.js`](../harness/cli.js):
 
 ### 1. Diagnóstico de Prerrequisitos
 ```bash
@@ -231,6 +231,6 @@ Para demostrar el funcionamiento del harness durante la evaluación docente:
    - Escaneo determinista de secretos con FoFo `secret-scan`.
    - Detección de conflictos e integraciones coordinadas.
 3. **Explicación de la Separación de Roles:**
-   Mostrar [`harness/agents/judge-agent.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/agents/judge-agent.js) (spec-only) y [`harness/agents/author-agent.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/agents/author-agent.js) (code-only), demostrando cómo el `test-lock` impide que el Author modifique las aserciones.
+   Mostrar [`harness/agents/judge-agent.js`](../harness/agents/judge-agent.js) (spec-only) y [`harness/agents/author-agent.js`](../harness/agents/author-agent.js) (code-only), demostrando cómo el `test-lock` impide que el Author modifique las aserciones.
 4. **Demostración de Ejecución de un Requerimiento (Fase 3B):**
    Demostrar cómo un único comando (`node harness/cli.js run REQ-010`) ejecuta automáticamente el flujo de OpenSpec, genera pruebas rojas, las bloquea, implementa la solución, ejecuta los gates y prepara el Pull Request.

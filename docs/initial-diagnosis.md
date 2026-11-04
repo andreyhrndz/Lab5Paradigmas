@@ -1,25 +1,25 @@
 # Diagnóstico Inicial del Proyecto — UNA Chat
 
-**Fecha de análisis:** 28 de octubre de 2026  
-**Entorno de ejecución:** Windows 11  
-**Versión de Node.js:** `v24.14.0`  
-**Versión de npm:** `11.6.2`  
-**Rama de trabajo:** [`feat/lab5-security-testing`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas)  
+**Fecha de análisis:** 28 de octubre de 2026
+**Entorno de ejecución:** Windows 11
+**Versión de Node.js:** `v24.14.0`
+**Versión de npm:** `11.6.2`
+**Rama de trabajo:** [`feat/lab5-security-testing`](https://github.com/andreyhrndz/Lab5Paradigmas)
 
 ---
 
 ## 1. Estructura del Repositorio y Configuración Inicial
 
-El repositorio contiene el código base del Laboratorio 5 en la carpeta [antes/](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/antes). De acuerdo con las instrucciones:
+El repositorio contiene el código base del Laboratorio 5 en la carpeta [antes/](../antes). De acuerdo con las instrucciones:
 - La carpeta `antes/` se conserva íntegra e inmutable como evidencia histórica del estado original de la aplicación.
-- Se ha generado una copia de trabajo funcional en [despues/](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/despues), sobre la cual se estructurará la versión corregida, asegurada y testeada.
-- Se configuró el archivo [.gitignore](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/.gitignore) en la raíz para omitir directorios de dependencias (`node_modules`), logs, reportes de pruebas generados y archivos del sistema operativo.
+- Se ha generado una copia de trabajo funcional en [despues/](../despues), sobre la cual se estructurará la versión corregida, asegurada y testeada.
+- Se configuró el archivo [.gitignore](../.gitignore) en la raíz para omitir directorios de dependencias (`node_modules`), logs, reportes de pruebas generados y archivos del sistema operativo.
 
 ---
 
 ## 2. Análisis del Stack Tecnológico y Dependencias
 
-Al inspeccionar [antes/package.json](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/antes/package.json):
+Al inspeccionar [antes/package.json](../antes/package.json):
 
 ```json
 {
@@ -63,17 +63,17 @@ Al inspeccionar [antes/package.json](file:///C:/Users/cuent/Downloads/Lab5Paradi
    }
    ```
 2. **Procesamiento en Servidor:**
-   - En [antes/server.js](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/antes/server.js):
+   - En [antes/server.js](../antes/server.js):
    ```javascript
    socket.on('Evento-Mensaje-Server', function(msg){
      msg = validation.validateMessage(msg);
      io.emit('Evento-Mensaje-Server', msg);
    });
    ```
-   - El backend invoca `validation.validateMessage(msg)` proveniente de [libs/unalib.js](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/antes/libs/unalib.js).
+   - El backend invoca `validation.validateMessage(msg)` proveniente de [libs/unalib.js](../antes/libs/unalib.js).
 3. **Servidor a Cliente (Broadcast):** El servidor retransmite el mensaje a todos los sockets conectados mediante `io.emit('Evento-Mensaje-Server', msg)`.
 4. **Recepción en Cliente:**
-   - En [antes/index.html](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/antes/index.html):
+   - En [antes/index.html](../antes/index.html):
    ```javascript
    socket.on('Evento-Mensaje-Server', function(msg){
        var msgJson = JSON.parse(msg);

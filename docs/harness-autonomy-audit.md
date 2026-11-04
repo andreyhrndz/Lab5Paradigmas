@@ -1,17 +1,17 @@
 # Informe de Auditoría de Autonomía Real del Harness Autónomo (Fase 3A.1)
 
-**Proyecto:** UNA Chat — Laboratorio 5: Paradigmas de Programación (Universidad Nacional)  
-**Repositorio:** `https://github.com/andreyhrndz/Lab5Paradigmas`  
-**Rama:** `feat/autonomous-harness`  
-**Fecha:** 28 de octubre de 2026  
-**Responsable:** Arquitecto de Sistemas Multiagente y Especialista en Flujos Autónomos  
+**Proyecto:** UNA Chat — Laboratorio 5: Paradigmas de Programación (Universidad Nacional)
+**Repositorio:** `https://github.com/andreyhrndz/Lab5Paradigmas`
+**Rama:** `feat/autonomous-harness`
+**Fecha:** 28 de octubre de 2026
+**Responsable:** Arquitecto de Sistemas Multiagente y Especialista en Flujos Autónomos
 
 ---
 
 ## 1. Verificación e Integración de Agentes Reales (Judge y Author)
 
 ### Diagnóstico de la Implementación Inicial (Simulaciones Detectadas)
-En la auditoría inicial de la Fase 3A se detectó que los módulos [`harness/agents/judge-agent.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/agents/judge-agent.js) y [`harness/agents/author-agent.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/agents/author-agent.js) contenían atajos programáticos:
+En la auditoría inicial de la Fase 3A se detectó que los módulos [`harness/agents/judge-agent.js`](../harness/agents/judge-agent.js) y [`harness/agents/author-agent.js`](../harness/agents/author-agent.js) contenían atajos programáticos:
 - **Judge:** Utilizaba plantillas fijas de cadenas (`specData.testTemplate` o un string formateado por defecto) y callbacks en lugar de razonar sobre la especificación y generar pruebas verdaderamente derivadas.
 - **Author:** Dependía de un objeto `specData.implementationPatch` o un callback inyectado (`implementorFn`), sin realizar una síntesis autónoma de código.
 
@@ -26,14 +26,14 @@ Se realizó un escaneo exhaustivo de los ejecutables y CLIs de IA disponibles en
   - **Estado:** Presenta tokens ChatGPT pero en modo no interactivo (`codex exec`) bloquea esperando stdin interactivo de terminal.
 
 ### Solución Implementada: Adaptador Real Multiproceso
-Se refactorizó el adaptador de agentes ([`harness/agents/agent-adapter.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/agents/agent-adapter.js)), integrando formalmente la CLI nativa de Antigravity (`agy.exe`):
+Se refactorizó el adaptador de agentes ([`harness/agents/agent-adapter.js`](../harness/agents/agent-adapter.js)), integrando formalmente la CLI nativa de Antigravity (`agy.exe`):
 1. **Ejecutable invocado por Judge:** `agy.exe` con flags `--print`, `--print-timeout 120s` y modelo de razonamiento.
 2. **Ejecutable invocado por Author:** `agy.exe` en un subproceso hijo desacoplado e independiente.
 3. **Mecanismo de Autenticación:** Sesión activa del usuario gestionada por Antigravity CLI en `%LOCALAPPDATA%\agy`.
 4. **Contexto Aislado para Judge:**
    - Judge recibe **únicamente** la especificación formal del requerimiento (`SPEC.md` / `specData`).
    - El prompt le prohíbe explícitamente leer o acceder al código fuente productivo en `despues/libs/`.
-   - Produce el archivo de trazabilidad [`TEST-REQS.yaml`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/fofo/scripts/trace-gate) y el archivo de pruebas en rojo `despues/test/unit/<reqId>.test.js`.
+   - Produce el archivo de trazabilidad [`TEST-REQS.yaml`](../harness/fofo/scripts/trace-gate) y el archivo de pruebas en rojo `despues/test/unit/<reqId>.test.js`.
 5. **Contexto para Author:**
    - Author recibe la especificación, el error exacto reportado por la prueba al fallar inicialmente (TDD RED), y el código actual del archivo permitido (`despues/libs/unalib.js`).
    - Tiene **estrictamente prohibido** modificar archivos dentro de `despues/test/`.
@@ -65,7 +65,7 @@ Para garantizar que la separación de roles no sea declarativa sino un hecho com
 ## 3. Auditoría de FoFo y OpenSpec
 
 ### FoFo (Agentic-SDLC)
-- **Origen:** Procedencia íntegra del repositorio oficial `Sweet-Papa-Technologies/Agentic-SDLC` (rama `main`), ubicado en [`harness/fofo/scripts/`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/fofo/scripts/).
+- **Origen:** Procedencia íntegra del repositorio oficial `Sweet-Papa-Technologies/Agentic-SDLC` (rama `main`), ubicado en [`harness/fofo/scripts/`](../harness/fofo/scripts/).
 - **Verificación Técnica:** Ejecución del suite completo de pruebas de FoFo (`python harness/fofo/scripts/selftest`): **56/56 pruebas aprobadas al 100%** bajo Python 3.14 en Windows.
 - **Ajuste de Alcance para secret-scan:** Se corrigió el patrón de escaneo de `despues/**/*` a `despues/libs/**/*,despues/server.js,despues/index.html,despues/test/**/*` para evitar que el buscador de regex inspeccione la carpeta de dependencias externas `node_modules`.
 
@@ -90,15 +90,15 @@ Se ejecutó la verificación real de autenticación en la máquina host:
 ```
 
 ### Comportamiento del Harness ante Ausencia de Autenticación
-- **Transparencia Total:** El módulo [`harness/core/pr-generator.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/core/pr-generator.js) implementa el método `isGhAuthenticated()`.
+- **Transparencia Total:** El módulo [`harness/core/pr-generator.js`](../harness/core/pr-generator.js) implementa el método `isGhAuthenticated()`.
 - Si `gh auth status` devuelve código distinto de cero (no autenticado), el harness **NO** intenta ejecutar comandos de creación remota que fallen con error de red, ni genera URLs falsas en los informes.
-- En su lugar, genera y persiste el archivo markdown completo [`PULL_REQUEST.md`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/core/pr-generator.js) en el directorio del trabajo (`.harness/jobs/<jobId>/PULL_REQUEST.md`), registra el estado `method: 'file-fallback'`, y notifica al desarrollador la instrucción para autenticarse manualmente (`gh auth login`).
+- En su lugar, genera y persiste el archivo markdown completo [`PULL_REQUEST.md`](../harness/core/pr-generator.js) en el directorio del trabajo (`.harness/jobs/<jobId>/PULL_REQUEST.md`), registra el estado `method: 'file-fallback'`, y notifica al desarrollador la instrucción para autenticarse manualmente (`gh auth login`).
 
 ---
 
 ## 5. Verificación de Concurrencia Real (3 Worktrees Simultáneos)
 
-Se implementó y aprobó la suite de pruebas de concurrencia [`harness/test/concurrency.infra.test.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/test/concurrency.infra.test.js):
+Se implementó y aprobó la suite de pruebas de concurrencia [`harness/test/concurrency.infra.test.js`](../harness/test/concurrency.infra.test.js):
 - **Asignación de Puertos:** Tres puertos HTTP independientes asignados simultáneamente mediante `PortAllocator` (ej. 3050, 3060, 3070) sin colisiones.
 - **Aislamiento de Git Worktrees:** Creación de tres carpetas físicas separadas en `.worktrees/conc-job-{alpha,beta,gamma}` sobre ramas independientes `feat/test-conc-{alpha,beta,gamma}` sin condiciones de carrera en el índice de Git.
 - **Máquina de Estados Concurrente:** 3 archivos `state.json` independientes actualizados en paralelo sin sobreescrituras ni corrupción.
@@ -109,7 +109,7 @@ Se implementó y aprobó la suite de pruebas de concurrencia [`harness/test/conc
 
 ## 6. Smoke Test End-to-End con Requerimiento Dummy (REQ-999)
 
-Para comprobar el ciclo autónomo completo sin tocar los requerimientos reservados del laboratorio (REQ-010, REQ-011 y REQ-012), se ejecutó el smoke test [`harness/test/smoke-dummy.test.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/test/smoke-dummy.test.js) con el requerimiento dummy:
+Para comprobar el ciclo autónomo completo sin tocar los requerimientos reservados del laboratorio (REQ-010, REQ-011 y REQ-012), se ejecutó el smoke test [`harness/test/smoke-dummy.test.js`](../harness/test/smoke-dummy.test.js) con el requerimiento dummy:
 - **ID:** `REQ-999`
 - **Título:** *Diagnóstico de ping en biblioteca unalib*
 - **Criterio:** `unalib.ping() === 'pong'`
@@ -131,9 +131,9 @@ Para comprobar el ciclo autónomo completo sin tocar los requerimientos reservad
 
 | Suite de Pruebas | Archivo | Pruebas | Estado |
 |---|---|---|---|
-| Infraestructura y Resiliencia | [`harness/test/harness.infra.test.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/test/harness.infra.test.js) | 13 | **13/13 APROBADAS** |
-| Concurrencia (3 Worktrees Simultáneos) | [`harness/test/concurrency.infra.test.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/test/concurrency.infra.test.js) | 5 | **5/5 APROBADAS** |
-| Smoke Test Autónomo End-to-End | [`harness/test/smoke-dummy.test.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/harness/test/smoke-dummy.test.js) | 1 | **1/1 APROBADA** |
+| Infraestructura y Resiliencia | [`harness/test/harness.infra.test.js`](../harness/test/harness.infra.test.js) | 13 | **13/13 APROBADAS** |
+| Concurrencia (3 Worktrees Simultáneos) | [`harness/test/concurrency.infra.test.js`](../harness/test/concurrency.infra.test.js) | 5 | **5/5 APROBADAS** |
+| Smoke Test Autónomo End-to-End | [`harness/test/smoke-dummy.test.js`](../harness/test/smoke-dummy.test.js) | 1 | **1/1 APROBADA** |
 | **Total General del Harness** | — | **19** | **19/19 APROBADAS (100%)** |
 
 El harness se encuentra auditado, autenticado, protegido contra manipulación y plenamente capacitado para orquestar la Parte 2 del Laboratorio (REQ-010, REQ-011 y REQ-012) cuando se ordene su ejecución.

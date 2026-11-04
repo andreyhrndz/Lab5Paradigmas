@@ -1,115 +1,151 @@
-# Registro de Evidencias de Pruebas y Seguridad — UNA Chat
+# Registro Consolidado de Evidencias — UNA Chat
 
-**Curso:** Paradigmas de Programación  
-**Institución:** Universidad Nacional (UNA)  
-**Laboratorio:** Laboratorio 5 — Seguridad Informática y Testing Automatizado  
-
-> **Laboratorio 8 — US-01 Auth0:** las evidencias redactadas de consentimiento, sesión autenticada y mensajes están en [us-01-auth0/README.md](us-01-auth0/README.md). Las copias originales con datos personales no se versionan.
-
----
-
-## 1. Índice de Evidencias Oficiales
-
-Según lo establecido en el documento oficial `Lab_5_Paradigmas_2026.pdf` (Página 10), se requiere la entrega de cuatro evidencias visuales correspondientes a cada etapa del ciclo de pruebas y aseguramiento de calidad:
-
-| Evidencia | Descripción Oficial | Archivo en Repositorio | Estado |
-|---|---|---|---|
-| **Evidencia 1** | Resultado de la prueba de inyección de scripts del paso 2 | [`evidencia-1.png`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/docs/evidence/evidencia-1.png) / [`evidencia-1.jpg`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/docs/evidence/evidencia-1.jpg) | **COMPLETADA (Fase 1)** |
-| **Evidencia 2** | Ejecución de las pruebas unitarias del paso 8 | [`evidencia-2.jpg`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/docs/evidence/evidencia-2.jpg) | **COMPLETADA (Fase 2)** |
-| **Evidencia 3** | Ejecución de las pruebas de integración del paso 9 | [`evidencia-3.jpg`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/docs/evidence/evidencia-3.jpg) | **COMPLETADA (Fase 2)** |
-| **Evidencia 4** | Ejecución de las pruebas End-to-End con Playwright del paso 10 | [`evidencia-4.jpg`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/docs/evidence/evidencia-4.jpg) | **COMPLETADA (Fase 2)** |
+**Institución:** Universidad Nacional de Costa Rica (UNA)
+**Sede:** Regional Chorotega — Campus Nicoya
+**Carrera:** Ingeniería en Sistemas de la Información
+**Curso:** Paradigmas de Programación
+**Profesor:** Ing. Alex Villegas Carranza, M.Sc.
+**Estudiante:** Andrey Tijerino Hernández
+**Entregas:** Laboratorios 5 y 6 (Seguridad, Testing, Harness, Memoria y Autenticación Social)
 
 ---
 
-## 2. Detalle y Reproducción de la Evidencia 1 (Script Injection XSS)
+## 1. Índice General de Evidencias
 
-### 2.1. Descripción de la Evidencia
-Demuestra que la aplicación original (`antes/`) permite la inyección y ejecución no autorizada de JavaScript en el navegador al recibir mensajes manipulados a través de Socket.IO.
+A continuación se presenta la tabla integral de evidencias de aseguramiento de calidad, remediación de seguridad, pruebas automatizadas, memoria y despliegue en producción para ambos laboratorios:
 
-### 2.2. Payloads Ejecutados
-1. **Payload Oficial:** `<script>alert('Inyección de script');</script>` (ejecutado vía `jQuery.globalEval`).
-2. **Payload Alternativo:** `<img src="x" onerror="alert('XSS Vulnerability Confirmed!')">` (ejecutado por evento `onerror`).
+### Evidencias del Laboratorio 5 (Seguridad y Testing)
 
-### 2.3. Reproducción
-```bash
-npm --prefix antes start
-```
-Abrir `http://localhost:3000`, ingresar el payload en el mensaje y verificar la ventana modal de alerta.
+| # | Evidencia | Descripción Técnica | Archivo en Repositorio | Estado |
+|:---:|---|---|---|:---:|
+| 1 | **Evidencia 1 (XSS)** | Reproducción de inyección de scripts JavaScript en la aplicación original (`antes/`). | [evidencia1.png](evidencia1.png) | **COMPLETADA** |
+| 2 | **Evidencia 2 (Unit)** | Ejecución exitosa de la suite de pruebas unitarias sobre `unalib.js` con Mocha (41 pruebas). | [evidencia-2.png](evidencia-2.png) | **COMPLETADA** |
+| 3 | **Evidencia 3 (Integration)** | Pruebas de integración sobre Socket.IO con servidor real en puerto efímero (8 pruebas). | [evidencia-3.png](evidencia-3.png) | **COMPLETADA** |
+| 4 | **Evidencia 4 (E2E)** | Pruebas End-to-End con Playwright en Chromium automatizando flujos de usuario (5 pruebas). | [evidencia-4.png](evidencia-4.png) | **COMPLETADA** |
+| 5 | **Evidencia 5 (Chat Seguro)** | Chat en ejecución con video de YouTube embebido de forma segura y payloads XSS neutralizados. | [evidencia-5.png](evidencia-5.png) | **COMPLETADA** |
+| 6 | **Evidencia Snyk** | Auditoría de Software Composition Analysis (SCA) con Snyk demostrando 0 vulnerabilidades en 82 dependencias. | [evidencia-snyk.png](evidencia-snyk.png) | **COMPLETADA** |
 
----
+### Evidencias del Laboratorio 6 (Memoria, Harness y US-01 Auth0)
 
-## 3. Detalle y Reproducción de la Evidencia 2 (Pruebas Unitarias)
-
-### 3.1. Descripción de la Evidencia
-Muestra la ejecución exitosa de la suite de pruebas unitarias sobre [`despues/libs/unalib.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/despues/libs/unalib.js).
-- **Total de pruebas ejecutadas:** 41 pruebas.
-- **Aprobadas:** 41 (100%).
-- **Fallidas:** 0.
-
-### 3.2. Alcance de las Pruebas Unitarias
-1. **Compatibilidad:** Pruebas originales de `is_valid_phone` y validadores corregidos.
-2. **URLs de Imágenes:** Detección de `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.webp`; rechazo de protocolos peligrosos (`javascript:`, `data:`), extensiones ejecutables e inyección de comillas.
-3. **URLs de YouTube:** Detección de formatos estándar, `youtu.be`, `embed`; validación estricta del ID de 11 caracteres y rechazo de dominios maliciosos.
-4. **Manejo de Errores y JSON:** Soporte robusto ante `null`, `undefined`, tipos no string y cadenas no-JSON.
-5. **Sanitización XSS:** Neutralización de `<script>`, manejadores de eventos (`onerror`, `onload`), etiquetas SVG, IFRAME y atributos CSS inyectados en `color` y `nombre`.
-6. **Contenido Legítimo:** Preservación de formato y estructuración segura de objetos multimedia.
-
-### 3.3. Comando de Reproducción
-```bash
-npm --prefix despues run test:unit
-```
-Archivo generado: [`docs/evidence/evidencia-2.jpg`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/docs/evidence/evidencia-2.jpg).
+| # | Evidencia | Descripción Técnica | Archivo en Repositorio | Estado |
+|:---:|---|---|---|:---:|
+| 7 | **Evidencia 6 (Auth0 Dashboard)** | Configuración en Auth0 de Allowed Callback URLs, Allowed Logout URLs y Allowed Web Origins para Vercel Production. | [evidencia-6.png](evidencia-6.png) | **COMPLETADA** |
+| 8 | **Evidencia 7 (Vercel Production)** | Deployment en Vercel (`lab5-paradigmas-ten.vercel.app`) en estado **Ready** en Production tras fusionar el PR #17. | [evidencia-7.png](evidencia-7.png) | **COMPLETADA** |
+| 9 | **Evidencia US-01-A (OAuth Consent)** | Pantalla de consentimiento y autorización de la aplicación UNA Chat en Auth0 ("Authorize App"). | [us-01-auth0/01-consentimiento-auth0-redactada.png](us-01-auth0/01-consentimiento-auth0-redactada.png) | **COMPLETADA** |
+| 10 | **Evidencia US-01-B (Chat Autenticado)** | Interfaz de UNA Chat mostrando la identidad autenticada asignada desde el servidor y opción de cerrar sesión. | [us-01-auth0/02-chat-autenticado-redactada.png](us-01-auth0/02-chat-autenticado-redactada.png) | **COMPLETADA** |
+| 11 | **Evidencia US-01-C (Mensajería Segura)** | Mensajes enviados en la sala de chat con identidad verificada ("Con esto damos por completado el laboratorio #6"). | [us-01-auth0/03-chat-mensajes-redactada.png](us-01-auth0/03-chat-mensajes-redactada.png) | **COMPLETADA** |
 
 ---
 
-## 4. Detalle y Reproducción de la Evidencia 3 (Pruebas de Integración Socket.IO)
+## 2. Detalle y Reproducción de las Evidencias del Laboratorio 5
 
-### 4.1. Descripción de la Evidencia
-Muestra la ejecución exitosa de las pruebas de integración en [`despues/test/integration/chat.integration.test.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/despues/test/integration/chat.integration.test.js) utilizando `socket.io-client` contra el servidor real de Express y Socket.IO en un puerto dinámico.
-- **Total de pruebas ejecutadas:** 8 pruebas.
-- **Aprobadas:** 8 (100%).
-- **Fallidas:** 0.
+### 2.1. Evidencia 1 — Vulnerabilidad Cross-Site Scripting (XSS)
+- **Archivo:** [evidencia1.png](evidencia1.png)
+- **Descripción:** Demuestra la existencia de la vulnerabilidad crítica CWE-79 en la versión original `antes/`. Al enviar el mensaje `<script>alert('Inyección de script');</script>`, el cliente original utilizaba `$('#messages').append($('<li>').html(mensajeDisplay))`, provocando la ejecución no controlada del script en el contexto de la ventana del navegador.
+- **Reproducción:**
+  ```powershell
+  cd antes
+  npm start
+  ```
+  Abrir `http://localhost:3000`, ingresar el payload en el campo de texto y observar la alerta JavaScript modal.
 
-### 4.2. Casos de Integración Verificados
-1. Recepción y retransmisión de mensaje de texto normal validado.
-2. Validación mediante UNA Lib y aceptación de imagen legítima.
-3. Validación mediante UNA Lib y aceptación de video de YouTube legítimo.
-4. Neutralización en tiempo real de inyección XSS con `<script>`.
-5. Neutralización en tiempo real de manejadores de eventos (`onerror`).
-6. Rechazo y depuración de protocolos no seguros (`javascript:`).
-7. Manejo tolerante a fallas de payloads JSON corruptos sin caída del servidor.
-8. Retransmisión bidireccional limpia entre múltiples sockets conectados simultáneamente.
-9. Cierre limpio y sin fugas de sockets y del servidor HTTP al finalizar.
+### 2.2. Evidencia 2 — Pruebas Unitarias de Validación y Seguridad
+- **Archivo:** [evidencia-2.png](evidencia-2.png)
+- **Descripción:** Captura de consola ejecutando `npm run test:unit` sobre `despues/libs/unalib.js`.
+- **Métricas:** 41 pruebas ejecutadas, **41 aprobadas (100%)**, 0 fallidas en 41ms.
+- **Cobertura:**
+  1. Validación y saneamiento de números de teléfono (`is_valid_phone`).
+  2. Validación estricta de extensiones de imagen (`.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`) y rechazo de esquemas maliciosos (`javascript:`, `data:`).
+  3. Detección segura de URLs de YouTube estándar, cortas y embebidas (`youtu.be`, `/watch?v=`, `/embed/`).
+  4. Extracción segura del ID de 11 caracteres de videos.
+  5. Manejo robusto de payloads no-JSON, nulos o de tipos inesperados sin caídas de proceso.
+  6. Saneamiento estricto contra inyección de HTML y atributos peligrosos (`onerror`, `onload`).
 
-### 4.3. Comando de Reproducción
-```bash
-npm --prefix despues run test:integration
-```
-Archivo generado: [`docs/evidence/evidencia-3.jpg`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/docs/evidence/evidencia-3.jpg).
+### 2.3. Evidencia 3 — Pruebas de Integración con Socket.IO
+- **Archivo:** [evidencia-3.png](evidencia-3.png)
+- **Descripción:** Captura de consola ejecutando `npm run test:integration` sobre `despues/test/integration/chat.integration.test.js`.
+- **Métricas:** 8 pruebas ejecutadas, **8 aprobadas (100%)**, 0 fallidas en 212ms.
+- **Cobertura:**
+  - Comunicación bidireccional sobre `'Evento-Mensaje-Server'`.
+  - Retransmisión segura de texto validado y objetos multimedia.
+  - Neutralización en tiempo real de scripts maliciosos y atributos de eventos.
+  - Retransmisión limpia entre múltiples sockets concurrentes.
+
+### 2.4. Evidencia 4 — Pruebas End-to-End con Playwright
+- **Archivo:** [evidencia-4.png](evidencia-4.png)
+- **Descripción:** Captura de consola ejecutando `npm run test:e2e` con Playwright sobre Chromium (`despues/test/e2e/chat.spec.js`).
+- **Métricas:** 5 pruebas ejecutadas en 1 worker, **5 aprobadas (100%)**, 0 fallidas en 12.0s.
+- **Cobertura:**
+  - Interacción real con el DOM del navegador.
+  - Envío y recepción visual de mensajes.
+  - Renderizado de imagen real con verificación de carga (`sample.png`).
+  - Renderizado de reproductor de video de YouTube mediante iframe seguro.
+  - Verificación en navegador real de la neutralización de XSS sin ejecución de scripts.
+
+### 2.5. Evidencia 5 — Chat Seguro en Ejecución
+- **Archivo:** [evidencia-5.png](evidencia-5.png)
+- **Descripción:** Captura de la interfaz de usuario en `http://localhost:3000` mostrando una sesión interactiva:
+  - Video de YouTube embebido y reproduciéndose correctamente.
+  - Mensajes de prueba con payloads `<script>` e `<img onerror=...>` renderizados como texto escapado inofensivo en la lista de mensajes.
+
+### 2.6. Evidencia Snyk — Auditoría de Vulnerabilidades de Dependencias
+- **Archivo:** [evidencia-snyk.png](evidencia-snyk.png)
+- **Descripción:** Resultado del escaneo SCA mediante `npx snyk test` sobre `despues/package-lock.json`.
+- **Métricas:** 82 dependencias analizadas, **0 vulnerabilidades encontradas**, 0 rutas vulnerables.
 
 ---
 
-## 5. Detalle y Reproducción de la Evidencia 4 (Pruebas E2E con Playwright)
+## 3. Detalle y Reproducción de las Evidencias del Laboratorio 6 (Memoria, Harness y US-01)
 
-### 5.1. Descripción de la Evidencia
-Muestra el reporte oficial de Playwright tras la ejecución de las pruebas End-to-End en Chromium en [`despues/test/e2e/chat.spec.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/despues/test/e2e/chat.spec.js).
-- **Total de pruebas E2E ejecutadas:** 5 pruebas.
-- **Aprobadas:** 5 (100%).
-- **Fallidas:** 0.
+### 3.1. Evidencia 6 — Configuración en Auth0 Dashboard
+- **Archivo:** [evidencia-6.png](evidencia-6.png)
+- **Descripción:** Muestra la configuración de la Regular Web Application "UNA Chat" en el tenant de Auth0 (`dev-0cns5htp3msxjw75`):
+  - **Allowed Callback URLs:** `https://lab5-paradigmas-ten.vercel.app/callback`
+  - **Allowed Logout URLs:** `https://lab5-paradigmas-ten.vercel.app`
+  - **Allowed Web Origins:** `https://lab5-paradigmas-ten.vercel.app`
 
-### 5.2. Escenarios E2E Automatizados
-1. **Comunicación real:** Envío mediante formulario web y renderizado en `#messages`.
-2. **Carga real de imagen:** Verificación de creación del elemento `img.chat-media`, atributo `src` seguro y carga completa en el motor (`img.complete && img.naturalWidth > 0`).
-3. **Reproductor de video:** Verificación de incrustación de `iframe.chat-media` con la URL segura de YouTube (`https://www.youtube.com/embed/qYwlqx-JLok`).
-4. **Prevención XSS (<script>):** Registro preventivo de listener `page.on('dialog')` antes del envío. Certificación de que ningún alert modal se disparó y verificación de que el script no existe como nodo activo en el DOM.
-5. **Prevención XSS (onerror):** Registro de listener `page.on('dialog')` y comprobación de que imágenes con atributos maliciosos son mostradas como texto plano sin ejecutar JavaScript.
+### 3.2. Evidencia 7 — Despliegue en Vercel Production
+- **Archivo:** [evidencia-7.png](evidencia-7.png)
+- **Descripción:** Muestra la consola de Vercel del proyecto `lab5-paradigmas`:
+  - **Estado:** Ready (Latest)
+  - **Entorno:** Production (Current)
+  - **Dominio:** `lab5-paradigmas-ten.vercel.app`
+  - **Origen:** Rama `main`, commit `92dd8d7` (Merge del Pull Request #17).
+  - **Vista previa:** Pantalla de bienvenida oficial de UNA Chat con el botón para autenticación OAuth con Auth0.
 
-### 5.3. Comando de Reproducción
-```bash
-npm --prefix despues run test:e2e
+### 3.3. Evidencias Redactadas de US-01 (Privacidad Protegida)
+En cumplimiento con las buenas prácticas de protección de datos personales, los datos de identidad (nombre completo y dirección de correo electrónico del estudiante) han sido redaccionados:
+
+1. **[01-consentimiento-auth0-redactada.png](us-01-auth0/01-consentimiento-auth0-redactada.png):**
+   - Diálogo OIDC de Auth0 ("Authorize App").
+   - La aplicación UNA Chat solicita acceso al perfil de usuario mediante Google.
+   - Opciones para aceptar o denegar el acceso.
+
+2. **[02-chat-autenticado-redactada.png](us-01-auth0/02-chat-autenticado-redactada.png):**
+   - Interfaz principal de UNA Chat tras completar exitosamente el login con Google vía Auth0.
+   - Encabezado con avatar, nombre verificado y botón "Cerrar sesión".
+   - Sala de conversación inicializada bajo la directriz: *"Tu identidad se asigna desde el servidor"*.
+
+3. **[03-chat-mensajes-redactada.png](us-01-auth0/03-chat-mensajes-redactada.png):**
+   - Intercambio de mensajes en tiempo real dentro de la sala de conversación.
+   - Cada mensaje lleva el nombre del usuario autenticado impuesto exclusivamente por el backend mediante la sesión validada.
+   - Mensaje de prueba visible: *"Con esto damos por completado el laboratorio #6"*.
+
+---
+
+## 4. Métricas Globales Consolidadas de Pruebas
+
+Tras completar la implementación del Laboratorio 5, el arnés autónomo y la historia US-01 Auth0 del Laboratorio 6, la aplicación cuenta con un arnés de **105 pruebas automatizadas**, todas pasando con éxito:
+
+```text
+Suite                             Total Pruebas    Aprobadas    Fallidas    Eficacia
+-------------------------------------------------------------------------------------
+Unitarias (unalib + auth-session)            54           54           0        100%
+Integración (Express + Socket.IO)            40           40           0        100%
+End-to-End (Playwright Chromium)             11           11           0        100%
+-------------------------------------------------------------------------------------
+Total Pruebas de Aplicación                 105          105           0        100%
+Pruebas de Software Factory                  20           20           0        100%
+-------------------------------------------------------------------------------------
+Total Consolidado                           125          125           0        100%
 ```
-Para consultar el reporte interactivo en el navegador:
-```bash
-cd despues && npx playwright show-report
-```
-Archivo generado: [`docs/evidence/evidencia-4.jpg`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/docs/evidence/evidencia-4.jpg).

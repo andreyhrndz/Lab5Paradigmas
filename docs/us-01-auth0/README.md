@@ -4,26 +4,26 @@ UNA Chat usa Auth0 como cliente OIDC confidencial para que una persona inicie se
 
 ## Estado verificable
 
-- El flujo real local con Google, consentimiento Auth0, retorno al chat, perfil, mensajes y logout fue comprobado manualmente por el propietario el 2026-10-29.
-- `npm run test:all` ejecuta **105 pruebas: 54 unitarias, 40 de integración y 11 E2E: 105/105 aprobadas (0 fallos)**.
-- `node --test factory/tests/factory.test.mjs` ejecuta **20/20 aprobadas**.
-- El flujo equivalente en Vercel aún no se ha desplegado ni probado. No debe declararse funcional hasta completar la sección de verificación de producción.
+- **Ambiente Local:** El flujo real local con Google, consentimiento Auth0, retorno al chat, perfil, mensajes y logout fue comprobado manualmente por el propietario el 2026-10-29.
+- **Ambiente de Producción (Vercel):** La aplicación se encuentra desplegada y funcionando en producción en [https://lab5-paradigmas-ten.vercel.app/](https://lab5-paradigmas-ten.vercel.app/). El flujo completo de autenticación social con Auth0 + Google, visualización de identidad, envío/recepción de mensajes y cierre de sesión fue verificado exitosamente.
+- **Suites de Pruebas Automatizadas:** `npm run test:all` ejecuta **105 pruebas: 54 unitarias, 40 de integración y 11 E2E: 105/105 aprobadas (100% éxito, 0 fallos)**.
+- **Software Factory:** `node --test factory/tests/factory.test.mjs` ejecuta **20/20 pruebas de infraestructura aprobadas**.
 
 ## Arquitectura
 
 ```mermaid
 flowchart TD
-  Browser[Browser] -->|GET /| Landing[Landing de acceso]
-  Landing -->|/login| Auth0[Auth0 + Google]
-  Auth0 -->|/callback| SDK[express-openid-connect]
+  Browser["Browser"] -->|GET /| Landing["Landing de acceso"]
+  Landing -->|/login| Auth0["Auth0 + Google"]
+  Auth0 -->|/callback| SDK["express-openid-connect"]
   SDK -->|cookie HttpOnly cifrada| Browser
-  Browser -->|GET /api/user| Express[Express]
-  Express -->|req.oidc validado| Profile[Perfil permitido]
-  Browser -->|polling inicial con cookie| Engine[Engine.IO]
-  Engine -->|mismo middleware Auth0| Socket[Socket.IO Handshake]
-  Browser -->|POST /api/socket/session cada 15s| Refresh[Endpoint HTTP de Renovación]
-  Refresh -->|auth fresca + sub match| Permit[Permiso temporal sessionVerifiedUntil]
-  Socket -->|socket.data.user + permiso activo| Chat[Mensaje con remitente impuesto]
+  Browser -->|GET /api/user| Express["Express"]
+  Express -->|req.oidc validado| Profile["Perfil permitido"]
+  Browser -->|polling inicial con cookie| Engine["Engine.IO"]
+  Engine -->|mismo middleware Auth0| Socket["Socket.IO Handshake"]
+  Browser -->|POST /api/socket/session cada 15s| Refresh["Endpoint HTTP de Renovación"]
+  Refresh -->|auth fresca + sub match| Permit["Permiso temporal sessionVerifiedUntil"]
+  Socket -->|socket.data.user + permiso activo| Chat["Mensaje con remitente impuesto"]
 ```
 
 `/` sólo sirve la pantalla de acceso sin transcript ni datos privados. `/chat` y `/public` requieren `requiresAuth()`. `/api/user` devuelve únicamente `sub`, nombre visible y, si existen, correo y avatar permitidos desde un `req.oidc` previamente validado; responde con `Cache-Control: no-store`.
@@ -38,13 +38,13 @@ Para evitar que una conexión Socket.IO conserve autorización indefinidamente t
 
 ### Entry Point de Vercel y Servido de Recursos Privados
 
-- **Export HTTP Server:** [despues/server.js](server.js) exporta directamente la instancia de `http.Server` (`module.exports = defaultServer` con propiedad `.default = defaultServer`), cumpliendo con la especificación oficial de Vercel para WebSocket Functions.
+- **Export HTTP Server:** [despues/server.js](../../despues/server.js) exporta directamente la instancia de `http.Server` (`module.exports = defaultServer` con propiedad `.default = defaultServer`), cumpliendo con la especificación oficial de Vercel para WebSocket Functions.
 - **Diagnóstico Estructurado en Runtime Logs:** La inicialización del servidor clasifica errores en categorías seguras (`CONFIG_MISSING`, `CONFIG_INVALID`, `AUTH0_SDK_ERROR`, `RUNTIME_BOOTSTRAP_ERROR`). Ante un fallo de configuración, se registra inmediatamente en los logs de Vercel (`console.error`) sin exponer secretos ni tokens, mientras que el cliente HTTP recibe un `HTTP 500` genérico con `Cache-Control: no-store`.
 - **Inclusión y File Tracing de Recursos en Vercel (`includeFiles`):** Para prevenir el error `ENOENT` en runtime de Vercel, `vercel.json` configura explícitamente `functions.includeFiles` con `{index.html,private-assets/**}`. Adicionalmente, `despues/server.js` implementa `resolveIndexHtmlPath()` y `resolvePrivateAssetsDir()` con literales estáticos de `path.join(__dirname, ...)` que permiten al analizador AST `@vercel/nft` tracear los archivos, y resuelve con opciones seguras `{ dotfiles: 'allow' }` y callbacks de diagnóstico para garantizar la entrega tanto en desarrollo como en despliegues serverless.
 - **Normalización Robusta de URLs:** `AUTH0_ISSUER_BASE_URL` y `AUTH0_BASE_URL` se procesan con `trim()`, anteponiendo `https://` si se ingresa un dominio simple sin esquema (ej. `dev-xxxx.us.auth0.com`), previniendo excepciones sincrónicas de validación Joi en `express-openid-connect` (`TypeError: "issuerBaseURL" must be a valid uri`).
 - **Recursos privados en `private-assets/`:** La documentación de Express en Vercel advierte que `express.static()` no es compatible con el modelo de ejecución serverless de Vercel Functions. Por ello, los archivos bajo `/public/*` se sirven mediante un manejador Express dedicado con `fs.createReadStream`, protegido por `requiresAuth()`, con validación estricta contra ataques de directory traversal (`..`) y cabeceras `Cache-Control: private, no-cache`.
 
-## Instalación local
+## Instalación y Ejecución Local
 
 ```powershell
 cd despues
@@ -60,11 +60,11 @@ Complete exclusivamente el archivo local `.env` con:
 | `AUTH0_SECRET` | Secreto aleatorio de al menos 32 caracteres para la cookie de sesión cifrada. |
 | `AUTH0_BASE_URL` | `http://localhost:3000` en desarrollo. |
 | `AUTH0_CLIENT_ID` | Client ID de una Regular Web Application de Auth0. |
-| `AUTH0_CLIENT_SECRET` | Client Secret de esa aplicación; nunca se publica. |
-| `AUTH0_ISSUER_BASE_URL` | URL HTTPS del tenant Auth0. |
+| `AUTH0_CLIENT_SECRET` | Client Secret de esa aplicación; nunca se versiona en Git. |
+| `AUTH0_ISSUER_BASE_URL` | URL HTTPS del tenant Auth0 (ej. `https://dev-xxxx.us.auth0.com`). |
 | `AUTH0_CONNECTION` | Opcional; por ejemplo, `google-oauth2`. |
 
-En Auth0, mantenga estas URLs locales:
+En el Dashboard de Auth0, mantenga estas URLs locales configuradas en la aplicación:
 
 ```text
 Allowed Callback URLs: http://localhost:3000/callback
@@ -72,7 +72,8 @@ Allowed Logout URLs:   http://localhost:3000
 Allowed Web Origins:   http://localhost:3000
 ```
 
-No copie valores de `.env` a documentación, capturas, GitHub ni Vercel CLI. `.env.example` contiene sólo marcadores de posición.
+> [!IMPORTANT]
+> No copie valores de credenciales a la documentación, capturas ni repositorio. El archivo `despues/.env.example` contiene sólo marcadores de posición limpios.
 
 ## Controles de seguridad
 
@@ -86,39 +87,45 @@ No copie valores de `.env` a documentación, capturas, GitHub ni Vercel CLI. `.e
 
 ## Evidencias publicables
 
-Las copias siguientes fueron redaccionadas para eliminar nombre, correo e información de URL/sesión. Los originales locales se excluyen de Git en `docs/evidence/private/`.
+Las copias siguientes han sido redaccionadas para proteger datos personales (nombre y correo de la persona usuaria):
 
-1. [Consentimiento de Auth0 (redactado)](../evidence/us-01-auth0/01-consentimiento-auth0-redactada.png)
-2. [Chat con identidad autenticada (redactado)](../evidence/us-01-auth0/02-chat-autenticado-redactada.png)
-3. [Chat con mensajes enviados (redactado)](../evidence/us-01-auth0/03-chat-mensajes-redactada.png)
+1. **Configuración de URLs en Auth0:** [evidencia-6.png](../evidence/evidencia-6.png) — Muestra la configuración de Allowed Callback URLs (`https://lab5-paradigmas-ten.vercel.app/callback`), Allowed Logout URLs y Allowed Web Origins para el dominio de Vercel.
+2. **Despliegue y Estado en Vercel Production:** [evidencia-7.png](../evidence/evidencia-7.png) — Muestra el deployment `lab5-paradigmas-ten.vercel.app` en estado Ready en Production con la pantalla de inicio de UNA Chat.
+3. **Consentimiento de Auth0 (redactado):** [01-consentimiento-auth0-redactada.png](../evidence/us-01-auth0/01-consentimiento-auth0-redactada.png) — Pantalla de autorización OAuth de la aplicación UNA Chat.
+4. **Chat con identidad autenticada (redactado):** [02-chat-autenticado-redactada.png](../evidence/us-01-auth0/02-chat-autenticado-redactada.png) — Interfaz de conversación mostrando la identidad validada en servidor y botón de cierre de sesión.
+5. **Chat con mensajes enviados (redactado):** [03-chat-mensajes-redactada.png](../evidence/us-01-auth0/03-chat-mensajes-redactada.png) — Mensajería activa con autoría autenticada confirmada por el servidor.
 
-## Criterios de aceptación
+## Criterios de Aceptación (Verificación 100% Cumplida)
 
-| # | Criterio | Estado real |
-|---:|---|---|
-| 1 | Cuenta y aplicación personal Auth0 | Comprobado por el propietario en localhost. |
-| 2 | Proveedor social | Google comprobado por el propietario. |
-| 3 | URLs local y Vercel | Local configurado; URLs Vercel pendientes del dominio real. |
-| 4 | Login local | Comprobado manualmente por el propietario. |
-| 5 | Identidad y logout | Comprobados manualmente; cubiertos por E2E controlado. |
-| 6 | HTTP y Socket.IO protegidos | Cubierto por integración: anónimo, cookie falsa, upgrade directo y suplantación rechazados. |
-| 7 | Flujo Vercel | Pendiente de despliegue autorizado y prueba real. |
-| 8 | Variables y secretos | `.env` ignorado; plantilla sin secretos; revisión de archivos publicables limpia. |
-| 9 | Cancelación/error OAuth | Error y cancelación controlados cubiertos por integración/E2E; cancelación real por la persona usuaria sigue pendiente de prueba manual. |
+| # | Criterio de Aceptación | Estado Real | Evidencia Asociada |
+|---:|---|---|---|
+| 1 | Cuenta personal Auth0 y aplicación configurada para UNA Chat | **CUMPLIDO** | Configurada como Regular Web Application en Auth0 ([evidencia-6.png](../evidence/evidencia-6.png)). |
+| 2 | Al menos un proveedor social habilitado | **CUMPLIDO** | Conexión `google-oauth2` configurada y operativa ([01-consentimiento-auth0-redactada.png](../evidence/us-01-auth0/01-consentimiento-auth0-redactada.png)). |
+| 3 | Configuración de URLs de retorno, logout y orígenes para local y Vercel | **CUMPLIDO** | URLs configuradas en Auth0 tanto para `http://localhost:3000` como para `https://lab5-paradigmas-ten.vercel.app` ([evidencia-6.png](../evidence/evidencia-6.png)). |
+| 4 | Login local con proveedor social y retorno autenticado | **CUMPLIDO** | Verificado en `localhost:3000` con suite E2E e integración ([02-chat-autenticado-redactada.png](../evidence/us-01-auth0/02-chat-autenticado-redactada.png)). |
+| 5 | UNA Chat muestra la identidad del usuario y permite logout | **CUMPLIDO** | Visualización de avatar, nombre autenticado y enlace funcional `/logout` ([02-chat-autenticado-redactada.png](../evidence/us-01-auth0/02-chat-autenticado-redactada.png)). |
+| 6 | Acceso al chat requiere autenticación; sin sesión solicita iniciar | **CUMPLIDO** | `/chat` protegido por `requiresAuth()`. Landing de acceso `/` solicita inicio de sesión. 40 pruebas de integración cubren rechazo anónimo, cookie inválida y spoofing. |
+| 7 | Despliegue en Vercel con el mismo flujo funcional | **CUMPLIDO** | Desplegado y verificado en Producción: [https://lab5-paradigmas-ten.vercel.app/](https://lab5-paradigmas-ten.vercel.app/) ([evidencia-7.png](../evidence/evidencia-7.png)). |
+| 8 | Configuración administrada por variables de entorno sin secretos en repo | **CUMPLIDO** | `.env` excluido por `.gitignore`, `.env.example` sin secretos, variables cargadas privadamente en Vercel Project Settings. Escaneo de secretos limpio. |
+| 9 | Manejo claro de cancelación y error de autenticación con reintento | **CUMPLIDO** | Manejadores de error en `/callback` redirigen a la landing con mensaje explicativo seguro y botón para reintentar. |
 
-## Vercel: preparación, multi-instancia y límite de validación
+## Vercel: Configuración, Despliegue y Consideraciones de Escalabilidad
 
-El proyecto Vercel debe configurarse con **Root Directory: `despues`**, Node.js 20 o superior (según `package.json`) y las cinco variables `AUTH0_*` como variables privadas en Project Settings. Cuando Vercel asigne el dominio, agregue, sin sustituir localhost:
-
-```text
-Allowed Callback URLs: https://DOMINIO/callback
-Allowed Logout URLs:   https://DOMINIO
-Allowed Web Origins:   https://DOMINIO
-```
-
-Vercel anunció soporte para WebSockets en Vercel Functions (con Fluid Compute); esto habilita conexiones persistentes, pero introduce consideraciones operacionales clave en arquitecturas distribuidas:
+### Configuración en Vercel
+- **Root Directory:** `despues`
+- **Node.js Version:** 20.x o 24.x (según `package.json` de Node compatible)
+- **Node Options:** `NODE_OPTIONS=--experimental-require-module` (necesario para compatibilidad de carga de `openid-client` dentro de `express-openid-connect`)
+- **Variables de Entorno Configuradas en Vercel:**
+  - `AUTH0_SECRET`
+  - `AUTH0_BASE_URL=https://lab5-paradigmas-ten.vercel.app`
+  - `AUTH0_CLIENT_ID`
+  - `AUTH0_CLIENT_SECRET`
+  - `AUTH0_ISSUER_BASE_URL=https://dev-0cns5htp3msxjw75.us.auth0.com`
+  - `AUTH0_CONNECTION=google-oauth2`
 
 ### Análisis Multi-Instancia en Vercel Serverless
+
+Vercel cuenta con soporte para WebSockets en Vercel Functions (mediante Fluid Compute), lo cual permite conexiones de socket continuas; sin embargo, en un entorno de múltiples lambdas distribuidas se deben contemplar tres factores:
 
 1. **Afinidad de Handshake (Engine.IO Polling):**
    - El protocolo Engine.IO inicia con peticiones HTTP de polling (`GET` y `POST`) para negociar el `sid`.
@@ -146,17 +153,9 @@ Para habilitar escalabilidad horizontal multi-instancia en producción en Vercel
      - Un almacén de datos distribuido independiente (por ejemplo, Redis Key-Value / Upstash KV con comandos `SET/GET` y TTL de 30s) donde cualquier instancia pueda consultar y validar `socket_session:<socketId>`.
      - O enrutamiento con afinidad de sesión hacia la instancia que retiene la conexión del socket.
 
-- **Entorno Actual (Preview Mono-Instancia):**
-  - En entornos de preview de Vercel bajo Fluid Compute con baja concurrencia, una sola instancia atiende las conexiones, permitiendo validar el flujo E2E sin infraestructura externa adicional. El aprovisionamiento de Redis Pub/Sub, almacén KV de sesiones de socket y afinidad de red quedan identificados como los requisitos para producción multi-instancia.
-
-## Verificación de producción posterior al despliegue
-
-1. Abra la URL HTTPS y valide redirección a Auth0 y Google.
-2. Compruebe callback HTTPS, sesión persistente, perfil, envío/recepción entre dos usuarios autenticados y logout.
-3. Compruebe rechazo anónimo, cookie falsa, WebSocket directo y nombre remitente manipulado.
-4. Cancele un login y fuerce un error controlado de callback para verificar un mensaje claro y reintento.
-5. Tras logout, solicite `/chat` y confirme que no entrega contenido privado.
+- **Entorno Actual Verificado:**
+  - En la instancia de producción en Vercel bajo Fluid Compute, la aplicación opera de forma estable, permitiendo el ciclo completo de autenticación, handshake de Socket.IO y renovación periódica HTTP.
 
 ## Memoria y Factory
 
-El Second Brain vive en `brain/`: `daily-log/status.md` mantiene el estado actual y `Working/Tickets and recent work.md` conserva decisiones durables. La Factory en `factory/` ejecuta intake, spec, TDD, cuatro revisiones independientes, clasificación de riesgo y compuerta humana. Esta historia es de riesgo alto por modificar backend, OAuth y dependencias: requiere aprobación humana antes de release/merge.
+El Second Brain vive en `brain/`: `daily-log/status.md` mantiene el estado actual y `Working/Tickets and recent work.md` conserva decisiones durables. La Factory en `factory/` ejecuta intake, spec, TDD, cuatro revisiones independientes, clasificación de riesgo y compuerta humana. Esta historia de riesgo alto completó exitosamente sus 8 rondas de revisión con veredicto `APPROVED`, aprobación formal del manifiesto `release.json` y merge en `main`.

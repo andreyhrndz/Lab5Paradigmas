@@ -1,9 +1,9 @@
 # Hallazgos de Seguridad, Remediaciones y Auditoría — UNA Chat
 
-**Proyecto:** Laboratorio 5 — Paradigmas de Programación (UNA 2026)  
-**Clasificación de Severidad:** OWASP Top 10 / CVSS v3.1 / CWE  
-**Fecha de Auditoría y Remediación:** 28 de octubre de 2026  
-**Rama:** [`feat/lab5-security-testing`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas)  
+**Proyecto:** Laboratorio 5 — Paradigmas de Programación (UNA 2026)
+**Clasificación de Severidad:** OWASP Top 10 / CVSS v3.1 / CWE
+**Fecha de Auditoría y Remediación:** 28 de octubre de 2026
+**Rama:** [`feat/lab5-security-testing`](https://github.com/andreyhrndz/Lab5Paradigmas)
 
 ---
 
@@ -11,7 +11,7 @@
 
 | ID | Vulnerabilidad | Clasificación CWE | Severidad Inicial | Estado Actual | Remediación Aplicada |
 |---|---|---|---|---|---|
-| **SEC-001** | Cross-Site Scripting (XSS) en `mensaje` | CWE-79 | **CRÍTICA** (8.2) | **MITIGADA Y VERIFICADA** | Defensa en profundidad: saneamiento de entidades HTML en [`despues/libs/unalib.js`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/despues/libs/unalib.js) y eliminación de `.html()` en [`despues/index.html`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/despues/index.html), sustituido por `.text()` y creación segura de DOM. |
+| **SEC-001** | Cross-Site Scripting (XSS) en `mensaje` | CWE-79 | **CRÍTICA** (8.2) | **MITIGADA Y VERIFICADA** | Defensa en profundidad: saneamiento de entidades HTML en [`despues/libs/unalib.js`](../despues/libs/unalib.js) y eliminación de `.html()` en [`despues/index.html`](../despues/index.html), sustituido por `.text()` y creación segura de DOM. |
 | **SEC-002** | Inyección de Atributos y CSS en `nombre` y `color` | CWE-80 / CWE-1021 | **MEDIA** (5.3) | **MITIGADA Y VERIFICADA** | Validación regex estricta para hexadecimal (`/^#[0-9a-fA-F]{6}$/`) y sanitización estricta de nombres. |
 | **SEC-003** | Denegación de Lógica / ReferenceError (`phone is not defined`) | CWE-391 | **MEDIA** (5.0) | **CORREGIDA** | Corrección de variables evaluadas en expresiones regulares de imágenes y videos. |
 | **SEC-004** | Vulnerabilidades en Dependencias (22 CVEs) | CWE-1104 | **ALTA** (7.5) | **REPARADA (0 VULNERABILIDADES)** | Actualización controlada de dependencias en `despues/package.json` y `package-lock.json`, eliminando 1 crítica, 16 altas, 1 moderada y 4 bajas. |
@@ -22,7 +22,7 @@
 ## 2. Decisiones de Arquitectura de Seguridad (Fase 2)
 
 ### 2.1. Eliminación de Manipulación Insegura del DOM
-Se eliminó por completo el uso de `$('#messages').append($('<li>').html(mensajeDisplay))` en [`despues/index.html`](file:///C:/Users/cuent/Downloads/Lab5Paradigmas/despues/index.html).
+Se eliminó por completo el uso de `$('#messages').append($('<li>').html(mensajeDisplay))` en [`despues/index.html`](../despues/index.html).
 En su lugar, se implementó:
 - Construcción explícita de nodos DOM utilizando jQuery y APIs seguras del navegador.
 - El nombre del usuario se asigna mediante `$('<b>').text(safeName)`.
