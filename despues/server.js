@@ -195,6 +195,10 @@ function createUnaChatServer(options = {}) {
   const server = http.createServer(app);
   const io = new Server(server);
   const production = environment.NODE_ENV === 'production';
+  const socketSessionMaxAgeMs = Number.isInteger(options.socketSessionMaxAgeMs)
+    && options.socketSessionMaxAgeMs > 0
+    ? options.socketSessionMaxAgeMs
+    : 30 * 1000;
 
   app.disable('x-powered-by');
   app.set('trust proxy', production ? 1 : false);
@@ -224,6 +228,26 @@ function createUnaChatServer(options = {}) {
     // ASVS 7.2.1: only expose the allowlisted profile produced by the
     // validated server session. Tokens and raw session material stay server-side.
     return res.json({ authenticated: true, user });
+  });
+  app.post('/api/socket/session', function refreshSocketSession(req, res) {
+    // This is a fresh HTTP request through auth(), so the SDK re-reads and
+    // verifies the encrypted session before renewing a socket permit. The
+    // opaque Socket.IO id is not an identity credential: it must already map
+    // to a socket whose handshake user has the same validated subject.
+    const user = getAuthenticatedUser(req);
+    const socketId = req.get('X-Socket-ID');
+    const socket = typeof socketId === 'string'
+      ? io.sockets.sockets.get(socketId)
+      : undefined;
+
+    res.set('Cache-Control', 'no-store');
+    if (!user || !socket || !socket.data.user || socket.data.user.sub !== user.sub) {
+      return res.status(401).end();
+    }
+
+    socket.data.user = user;
+    socket.data.sessionVerifiedUntil = Date.now() + socketSessionMaxAgeMs;
+    return res.status(204).end();
   });
   app.use(
     '/public',
@@ -270,17 +294,18 @@ function createUnaChatServer(options = {}) {
 
   io.on('connection', function(socket) {
     socket.on('Evento-Mensaje-Server', function(msg) {
-      // Re-check the Auth0 context for every privileged event. This prevents
-      // a socket from retaining the user snapshot after its session context
-      // has become unauthenticated (for example, during logout or expiry).
-      const currentUser = getAuthenticatedUser(socket.request);
-      if (!currentUser) {
+      // A socket begins with no event permit. The browser must renew it using
+      // /api/socket/session, which traverses a *new* auth() request and thus
+      // observes SDK expiry/logout rather than a frozen handshake context.
+      if (
+        !Number.isFinite(socket.data.sessionVerifiedUntil) ||
+        socket.data.sessionVerifiedUntil <= Date.now()
+      ) {
         socket.disconnect(true);
         return;
       }
 
-      socket.data.user = currentUser;
-      const validatedMsg = getAuthenticatedMessage(msg, currentUser);
+      const validatedMsg = getAuthenticatedMessage(msg, socket.data.user);
       if (!validatedMsg) {
         return;
       }

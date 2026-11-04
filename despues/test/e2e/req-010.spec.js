@@ -12,6 +12,6 @@ test.describe('REQ-010 (E2E) — validación de mensajes vacíos', () => {
     await page.getByRole('button', { name: 'Enviar' }).click();
     await expect(page.locator('#messages li')).toHaveCount(initialCount);
     await expect(page.locator('#m')).toHaveValue('');
-    await expect(page.locator('#message-notice')).toContainText('Escriba un mensaje');
+    await expect(page.locator('#message-notice')).toContainText('Escribe un mensaje');
   });
 });

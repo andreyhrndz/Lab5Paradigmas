@@ -1,4 +1,5 @@
 const ioClient = require('socket.io-client');
+const http = require('http');
 const { createUnaChatServer } = require('../../server');
 
 const verifiedUser = {
@@ -30,16 +31,35 @@ function createRuntime() {
       await new Promise((resolve) => runtime.http.listen(0, resolve));
       return runtime.http.address().port;
     },
-    connect(port) {
+    async connect(port) {
       const socket = ioClient(`http://127.0.0.1:${port}`, {
         forceNew: true,
         extraHeaders: { 'x-test-auth': 'verified' },
       });
       sockets.push(socket);
-      return new Promise((resolve, reject) => {
-        socket.once('connect', () => resolve(socket));
+      await new Promise((resolve, reject) => {
+        socket.once('connect', resolve);
         socket.once('connect_error', reject);
       });
+      const response = await new Promise((resolve, reject) => {
+        const request = http.request({
+          hostname: '127.0.0.1',
+          port,
+          path: '/api/socket/session',
+          method: 'POST',
+          headers: { 'x-test-auth': 'verified', 'x-socket-id': socket.id },
+        }, (result) => {
+          result.resume();
+          result.once('end', () => resolve(result));
+        });
+        request.once('error', reject);
+        request.end();
+      });
+      if (response.statusCode !== 204) {
+        socket.disconnect();
+        throw new Error('Socket session refresh was rejected');
+      }
+      return socket;
     },
     async stop() {
       sockets.forEach((socket) => socket.disconnect());

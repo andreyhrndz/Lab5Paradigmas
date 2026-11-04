@@ -24,9 +24,13 @@ function verifiedContextForTests(req, res, next) {
   }
 
   const authenticated = req.headers['x-test-auth'] === 'verified';
+  const customSub = req.headers['x-test-user-sub'];
+  const testUser = authenticated
+    ? (customSub ? { ...verifiedUser, sub: customSub, name: 'Otro Usuario' } : verifiedUser)
+    : undefined;
   req.oidc = {
     isAuthenticated: () => authenticated,
-    user: authenticated ? verifiedUser : undefined,
+    user: testUser,
   };
   res.oidc = {
     login: () => res.status(401).send('Authentication required'),
@@ -34,10 +38,10 @@ function verifiedContextForTests(req, res, next) {
   next();
 }
 
-function httpRequest(port, requestPath, headers = {}) {
+function httpRequest(port, requestPath, headers = {}, method = 'GET') {
   return new Promise((resolve, reject) => {
     const request = http.request(
-      { hostname: '127.0.0.1', port, path: requestPath, headers },
+      { hostname: '127.0.0.1', port, path: requestPath, headers, method },
       (response) => {
         let body = '';
         response.setEncoding('utf8');
@@ -61,7 +65,24 @@ function connect(port, headers = {}) {
   });
 
   return new Promise((resolve, reject) => {
-    socket.once('connect', () => resolve(socket));
+    socket.once('connect', async () => {
+      try {
+        const response = await httpRequest(
+          port,
+          '/api/socket/session',
+          { ...headers, 'x-socket-id': socket.id },
+          'POST',
+        );
+        if (response.status !== 204) {
+          socket.disconnect();
+          return reject(new Error('Socket session refresh was rejected'));
+        }
+        return resolve(socket);
+      } catch (error) {
+        socket.disconnect();
+        return reject(error);
+      }
+    });
     socket.once('connect_error', reject);
   });
 }
@@ -339,17 +360,88 @@ describe('US-01 Auth0 — HTTP y Socket.IO (Integration)', function () {
     assert.strictEqual(message.mensaje, 'Mensaje resistente');
   });
 
-  it('9.2. Desconecta un socket cuyo contexto Auth0 deja de estar autenticado', async function () {
+  it('9.2. Desconecta el socket cuando una verificación HTTP nueva detecta la sesión vencida', async function () {
+    let sessionIsValid = true;
+    const expiringContext = (req, res, next) => {
+      const authenticated = req.headers['x-test-auth'] === 'verified' && sessionIsValid;
+      req.oidc = {
+        isAuthenticated: () => authenticated,
+        user: authenticated ? verifiedUser : undefined,
+      };
+      res.oidc = { login: () => res.status(401).end() };
+      next();
+    };
+    const expiringRuntime = createUnaChatServer({
+      authMiddleware: expiringContext,
+      socketSessionMaxAgeMs: 25,
+    });
+    await new Promise((resolve) => expiringRuntime.http.listen(0, resolve));
+    const expiringPort = expiringRuntime.http.address().port;
+
+    try {
+      const socket = await connect(expiringPort, { 'x-test-auth': 'verified' });
+      sessionIsValid = false;
+      const profileAfterExpiry = await httpRequest(expiringPort, '/api/user', {
+        'x-test-auth': 'verified',
+      });
+      assert.strictEqual(profileAfterExpiry.status, 401);
+      await new Promise((resolve) => setTimeout(resolve, 35));
+
+      const disconnected = new Promise((resolve) => socket.once('disconnect', resolve));
+      socket.emit('Evento-Mensaje-Server', JSON.stringify({ mensaje: 'No debe enviarse' }));
+      await disconnected;
+      assert.strictEqual(socket.connected, false);
+    } finally {
+      await new Promise((resolve) => expiringRuntime.io.close(resolve));
+    }
+  });
+
+  it('9.3. Rechaza la renovación de permiso si la petición es anónima o el X-Socket-ID es inválido', async function () {
+    const anonRes = await httpRequest(port, '/api/socket/session', {}, 'POST');
+    assert.strictEqual(anonRes.status, 401);
+
+    const invalidRes = await httpRequest(
+      port,
+      '/api/socket/session',
+      { 'x-test-auth': 'verified', 'x-socket-id': 'non-existent-socket-id' },
+      'POST',
+    );
+    assert.strictEqual(invalidRes.status, 401);
+  });
+
+  it('9.4. Impide que un usuario autenticado renueve el permiso de un socket ajeno', async function () {
     const socket = await connect(port, { 'x-test-auth': 'verified' });
     sockets.push(socket);
-    const serverSocket = runtime.io.sockets.sockets.get(socket.id);
-    assert.ok(serverSocket);
-    serverSocket.request.oidc.isAuthenticated = () => false;
 
-    const disconnected = new Promise((resolve) => socket.once('disconnect', resolve));
-    socket.emit('Evento-Mensaje-Server', JSON.stringify({ mensaje: 'No debe enviarse' }));
+    const attackerAttempt = await httpRequest(
+      port,
+      '/api/socket/session',
+      {
+        'x-test-auth': 'verified',
+        'x-test-user-sub': 'auth0|attacker-different-sub',
+        'x-socket-id': socket.id,
+      },
+      'POST',
+    );
+    assert.strictEqual(attackerAttempt.status, 401);
+  });
+
+  it('9.5. Desconecta inmediatamente un socket que intenta emitir eventos sin renovar el permiso inicial', async function () {
+    const rawSocket = ioClient(`http://127.0.0.1:${port}`, {
+      forceNew: true,
+      extraHeaders: { 'x-test-auth': 'verified' },
+    });
+    sockets.push(rawSocket);
+
+    await new Promise((resolve, reject) => {
+      rawSocket.once('connect', resolve);
+      rawSocket.once('connect_error', reject);
+    });
+
+    const disconnected = new Promise((resolve) => rawSocket.once('disconnect', resolve));
+    rawSocket.emit('Evento-Mensaje-Server', JSON.stringify({ mensaje: 'Sin permiso previo' }));
     await disconnected;
-    assert.strictEqual(socket.connected, false);
+    assert.strictEqual(rawSocket.connected, false);
   });
 
   it('10. Conserva el saneamiento XSS antes de retransmitir', async function () {
