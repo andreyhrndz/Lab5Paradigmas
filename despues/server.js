@@ -23,6 +23,51 @@ const REQUIRED_AUTH0_VARIABLES = [
   'AUTH0_CLIENT_SECRET',
 ];
 
+function categorizeAuth0InitError(error) {
+  if (!error) {
+    return { category: 'UNKNOWN', reason: 'No error provided' };
+  }
+
+  const message = error.message || String(error);
+
+  if (message.includes('Auth0 configuration is incomplete')) {
+    return {
+      category: 'CONFIG_MISSING',
+      reason: message,
+    };
+  }
+
+  if (
+    message.includes('AUTH0_SECRET must contain at least 32 characters') ||
+    message.includes('AUTH0_BASE_URL') ||
+    message.includes('AUTH0_ISSUER_BASE_URL')
+  ) {
+    return {
+      category: 'CONFIG_INVALID',
+      reason: message,
+    };
+  }
+
+  if (
+    error instanceof TypeError ||
+    error.name === 'TypeError' ||
+    message.includes('issuerBaseURL') ||
+    message.includes('baseURL') ||
+    message.includes('clientSecret') ||
+    message.includes('clientID')
+  ) {
+    return {
+      category: 'AUTH0_SDK_ERROR',
+      reason: `express-openid-connect validation error: ${message}`,
+    };
+  }
+
+  return {
+    category: 'RUNTIME_BOOTSTRAP_ERROR',
+    reason: message,
+  };
+}
+
 function getAuth0Config(environment = process.env) {
   const missing = REQUIRED_AUTH0_VARIABLES.filter(
     (name) => !environment[name] || !String(environment[name]).trim(),
@@ -34,13 +79,21 @@ function getAuth0Config(environment = process.env) {
     );
   }
 
-  if (String(environment.AUTH0_SECRET).length < 32) {
+  const secret = String(environment.AUTH0_SECRET).trim();
+  if (secret.length < 32) {
     throw new Error('AUTH0_SECRET must contain at least 32 characters.');
+  }
+
+  const production = environment.NODE_ENV === 'production';
+
+  let rawBaseURL = String(environment.AUTH0_BASE_URL).trim();
+  if (!/^https?:\/\//i.test(rawBaseURL)) {
+    rawBaseURL = (production ? 'https://' : 'http://') + rawBaseURL;
   }
 
   let baseURL;
   try {
-    baseURL = new URL(environment.AUTH0_BASE_URL);
+    baseURL = new URL(rawBaseURL);
   } catch (_error) {
     throw new Error('AUTH0_BASE_URL must be a valid absolute URL.');
   }
@@ -49,9 +102,28 @@ function getAuth0Config(environment = process.env) {
     throw new Error('AUTH0_BASE_URL must use HTTP or HTTPS.');
   }
 
-  const production = environment.NODE_ENV === 'production';
   if (production && baseURL.protocol !== 'https:') {
     throw new Error('AUTH0_BASE_URL must use HTTPS in production.');
+  }
+
+  let rawIssuer = String(environment.AUTH0_ISSUER_BASE_URL).trim();
+  if (!/^https?:\/\//i.test(rawIssuer)) {
+    rawIssuer = 'https://' + rawIssuer;
+  }
+
+  let issuerBaseURL;
+  try {
+    issuerBaseURL = new URL(rawIssuer);
+  } catch (_error) {
+    throw new Error('AUTH0_ISSUER_BASE_URL must be a valid absolute URL.');
+  }
+
+  if (!['http:', 'https:'].includes(issuerBaseURL.protocol)) {
+    throw new Error('AUTH0_ISSUER_BASE_URL must use HTTP or HTTPS.');
+  }
+
+  if (production && issuerBaseURL.protocol !== 'https:') {
+    throw new Error('AUTH0_ISSUER_BASE_URL must use HTTPS in production.');
   }
 
   const secureCookie = baseURL.protocol === 'https:';
@@ -59,16 +131,16 @@ function getAuth0Config(environment = process.env) {
   return {
     authRequired: false,
     idpLogout: true,
-    secret: environment.AUTH0_SECRET,
+    secret,
     baseURL: baseURL.origin,
-    clientID: environment.AUTH0_CLIENT_ID,
-    clientSecret: environment.AUTH0_CLIENT_SECRET,
-    issuerBaseURL: environment.AUTH0_ISSUER_BASE_URL,
+    clientID: String(environment.AUTH0_CLIENT_ID).trim(),
+    clientSecret: String(environment.AUTH0_CLIENT_SECRET).trim(),
+    issuerBaseURL: issuerBaseURL.origin,
     authorizationParams: {
       response_type: 'code',
       scope: 'openid profile email',
       ...(environment.AUTH0_CONNECTION
-        ? { connection: environment.AUTH0_CONNECTION }
+        ? { connection: String(environment.AUTH0_CONNECTION).trim() }
         : {}),
     },
     session: {
@@ -360,17 +432,26 @@ function createUnaChatServer(options = {}) {
 let defaultServer;
 let defaultRuntime = null;
 let defaultInitError = null;
+let defaultInitDiagnostics = null;
 
 try {
   defaultRuntime = createUnaChatServer();
   defaultServer = defaultRuntime.http;
 } catch (error) {
   defaultInitError = error;
-  // Vercel execution contract: if the server cannot initialize due to missing
-  // or invalid configuration, do NOT produce a silent empty server that appears
-  // valid but hangs incoming requests. Fail deterministically with HTTP 500
-  // without leaking sensitive environment values or tokens.
+  defaultInitDiagnostics = categorizeAuth0InitError(error);
+
+  // Vercel execution contract: log error category and neutral reason directly to Runtime Logs
+  console.error(
+    `[UNA-CHAT-INIT-ERROR] Category: ${defaultInitDiagnostics.category} | Detail: ${defaultInitDiagnostics.reason}`,
+  );
+
+  // Do NOT produce a silent empty server that appears valid but hangs incoming requests.
+  // Fail deterministically with HTTP 500 without leaking sensitive environment values or tokens.
   defaultServer = http.createServer(function handleUnconfiguredServer(_req, res) {
+    console.error(
+      `[UNA-CHAT-REQUEST-ERROR] Handled request with unconfigured server. Category: ${defaultInitDiagnostics.category} | Detail: ${defaultInitDiagnostics.reason}`,
+    );
     res.writeHead(500, {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-store',
@@ -380,10 +461,12 @@ try {
 }
 
 defaultServer.initError = defaultInitError;
+defaultServer.initDiagnostics = defaultInitDiagnostics;
 defaultServer.default = defaultServer;
 defaultServer.server = defaultServer;
 defaultServer.createUnaChatServer = createUnaChatServer;
 defaultServer.getAuth0Config = getAuth0Config;
+defaultServer.categorizeAuth0InitError = categorizeAuth0InitError;
 defaultServer.getAuthenticatedMessage = getAuthenticatedMessage;
 defaultServer.applyBrowserSecurityHeaders = applyBrowserSecurityHeaders;
 defaultServer.hasTrustedSocketOrigin = hasTrustedSocketOrigin;

@@ -141,6 +141,7 @@ describe('US-01 Auth0 — HTTP y Socket.IO (Integration)', function () {
     assert.strictEqual(serverExport.server, serverExport);
     assert.strictEqual(typeof serverExport.createUnaChatServer, 'function');
     assert.strictEqual(typeof serverExport.getAuth0Config, 'function');
+    assert.strictEqual(typeof serverExport.categorizeAuth0InitError, 'function');
   });
 
   it('1. Informa una configuración incompleta sin crear una configuración ficticia', function () {
@@ -183,6 +184,46 @@ describe('US-01 Auth0 — HTTP y Socket.IO (Integration)', function () {
     } finally {
       await new Promise((resolve) => unconfiguredServer.close(resolve));
     }
+  });
+
+  it('1.3. Categoriza diagnósticos de inicialización Auth0 de forma segura sin revelar tokens', function () {
+    const { categorizeAuth0InitError } = require('../../server');
+
+    const missingDiag = categorizeAuth0InitError(new Error('Auth0 configuration is incomplete. Set: AUTH0_SECRET'));
+    assert.strictEqual(missingDiag.category, 'CONFIG_MISSING');
+    assert.strictEqual(missingDiag.reason.includes('AUTH0_SECRET'), true);
+
+    const invalidDiag = categorizeAuth0InitError(new Error('AUTH0_SECRET must contain at least 32 characters.'));
+    assert.strictEqual(invalidDiag.category, 'CONFIG_INVALID');
+
+    const sdkDiag = categorizeAuth0InitError(new TypeError('"issuerBaseURL" must be a valid uri'));
+    assert.strictEqual(sdkDiag.category, 'AUTH0_SDK_ERROR');
+    assert.match(sdkDiag.reason, /express-openid-connect validation error/);
+  });
+
+  it('1.4. Normaliza AUTH0_ISSUER_BASE_URL anteponiendo https a dominios sin esquema para prevenir rechazo del SDK', function () {
+    const config = getAuth0Config({
+      AUTH0_SECRET: 'test-only-secret-with-more-than-thirty-two-characters',
+      AUTH0_BASE_URL: 'http://localhost:3000',
+      AUTH0_CLIENT_ID: 'test-client-id',
+      AUTH0_ISSUER_BASE_URL: 'dev-tenant123.us.auth0.com',
+      AUTH0_CLIENT_SECRET: 'test-client-secret',
+    });
+
+    assert.strictEqual(config.issuerBaseURL, 'https://dev-tenant123.us.auth0.com');
+  });
+
+  it('1.5. Normaliza AUTH0_BASE_URL en producción anteponiendo https si se omite el esquema', function () {
+    const config = getAuth0Config({
+      NODE_ENV: 'production',
+      AUTH0_SECRET: 'test-only-secret-with-more-than-thirty-two-characters',
+      AUTH0_BASE_URL: 'una-chat-preview.vercel.app',
+      AUTH0_CLIENT_ID: 'test-client-id',
+      AUTH0_ISSUER_BASE_URL: 'https://dev-tenant123.us.auth0.com',
+      AUTH0_CLIENT_SECRET: 'test-client-secret',
+    });
+
+    assert.strictEqual(config.baseURL, 'https://una-chat-preview.vercel.app');
   });
 
   it('2. Configura cookies seguras según el entorno y exige HTTPS en producción', function () {
