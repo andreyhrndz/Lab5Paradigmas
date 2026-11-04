@@ -44,6 +44,7 @@
       .composer button:hover:not(:disabled) { background: #263d63; }
       .composer button:disabled { cursor: not-allowed; opacity: .55; }
       .notice { min-height: 1.35em; margin: 0; padding: 0 14px 14px; color: #9a3c25; font-size: .88rem; }
+      .auth-retry { margin: 0 0 14px; border: 0; border-radius: 9px; background: transparent; color: #174f9d; cursor: pointer; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
       .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
       [hidden] { display: none !important; }
       @media (max-width: 600px) { .shell { width: min(100% - 22px, 860px); padding-top: 17px; } .topbar { align-items: flex-start; } .profile { align-items: flex-start; } .welcome { margin: 14vh auto; } .chat-heading { display: block; } .chat-heading p { margin-top: 5px; } .composer { grid-template-columns: 1fr; } .composer button { width: 100%; } }
@@ -53,7 +54,7 @@
     <main class="shell">
       <header class="topbar">
         <a class="brand" href="/" aria-label="Inicio de UNA Chat"><span class="brand-mark">UNA</span> Chat</a>
-        <p class="auth-state" id="auth-loading">Comprobando sesión segura…</p>
+        <p class="auth-state" id="auth-loading" role="status" aria-live="polite">Comprobando sesión segura…</p>
         <section class="profile" id="profile" hidden aria-label="Sesión autenticada">
           <div class="profile-copy"><span class="profile-name" id="user-name"></span><span class="profile-email" id="user-email" hidden></span></div>
           <a class="logout" id="logout-link" href="/logout">Cerrar sesión</a>
@@ -65,6 +66,12 @@
         <p>Inicia sesión con Auth0 para entrar al chat. El nombre que aparece en tus mensajes procede de tu sesión autenticada.</p>
         <p class="notice" id="auth-notice" role="status" hidden></p>
         <a class="primary-action" id="login-link" href="/login">Iniciar sesión con Auth0</a>
+      </section>
+
+      <section class="welcome" id="session-error-view" hidden aria-labelledby="session-error-title">
+        <h1 id="session-error-title">No pudimos comprobar tu sesión.</h1>
+        <p class="notice" id="session-error-notice" role="status" aria-live="polite"></p>
+        <button class="auth-retry" id="auth-retry" type="button">Reintentar comprobación de sesión</button>
       </section>
 
       <section class="chat" id="authenticated-view" hidden aria-labelledby="chat-title">
@@ -85,20 +92,35 @@
         var colorHexTxt = '';
         var loading = document.getElementById('auth-loading');
         var unauthenticatedView = document.getElementById('unauthenticated-view');
+        var sessionErrorView = document.getElementById('session-error-view');
         var authenticatedView = document.getElementById('authenticated-view');
         var profile = document.getElementById('profile');
         var authNotice = document.getElementById('auth-notice');
+        var authRetry = document.getElementById('auth-retry');
         var notice = document.getElementById('message-notice');
         var messageInput = document.getElementById('m');
         var sendButton = document.getElementById('send-message');
 
-        function getRandomColor() { var letters = '0123456789ABCDEF'; var color = '#'; for (var i = 0; i < 6; i += 1) color += letters[Math.floor(Math.random() * 16)]; return color; }
+        function getRandomColor() { var colors = ['#1d4ed8', '#047857', '#b91c1c', '#7e22ce', '#9a3412', '#0f766e']; return colors[Math.floor(Math.random() * colors.length)]; }
         function isValidHexColor(color) { return typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color.trim()); }
+        function isReadableSenderColor(color) {
+          if (!isValidHexColor(color)) return false;
+          var value = color.trim().slice(1);
+          var channels = [0, 2, 4].map(function (index) { return parseInt(value.slice(index, index + 2), 16) / 255; });
+          var linear = channels.map(function (channel) { return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4); });
+          var luminance = (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
+          // Both message backgrounds are pale; require WCAG AA contrast against #eaf3ff.
+          return (0.95 / (luminance + 0.05)) >= 4.5;
+        }
         function isValidHttpUrl(url) { try { var parsed = new URL(url); return parsed.protocol === 'http:' || parsed.protocol === 'https:'; } catch (_error) { return false; } }
         function setNotice(message) { notice.textContent = message || ''; }
         function showUnauthenticated() {
-          loading.hidden = true; profile.hidden = true; unauthenticatedView.hidden = false; authenticatedView.hidden = true;
-          if (new URLSearchParams(window.location.search).get('authError') === 'login_failed') {
+          loading.hidden = true; profile.hidden = true; unauthenticatedView.hidden = false; sessionErrorView.hidden = true; authenticatedView.hidden = true;
+          var authError = new URLSearchParams(window.location.search).get('authError');
+          if (authError === 'login_cancelled') {
+            authNotice.textContent = 'Inicio de sesión cancelado. Puedes intentarlo de nuevo.';
+            authNotice.hidden = false;
+          } else if (authError === 'login_failed') {
             authNotice.textContent = 'No fue posible iniciar sesión. Inténtalo de nuevo.';
             authNotice.hidden = false;
           } else {
@@ -106,8 +128,12 @@
             authNotice.hidden = true;
           }
         }
+        function showSessionCheckError() {
+          loading.hidden = true; profile.hidden = true; unauthenticatedView.hidden = true; sessionErrorView.hidden = false; authenticatedView.hidden = true;
+          document.getElementById('session-error-notice').textContent = 'No fue posible comprobar tu sesión. Inténtalo de nuevo.';
+        }
         function showAuthenticated(user) {
-          loading.hidden = true; unauthenticatedView.hidden = true; authenticatedView.hidden = false; profile.hidden = false;
+          loading.hidden = true; unauthenticatedView.hidden = true; sessionErrorView.hidden = true; authenticatedView.hidden = false; profile.hidden = false;
           document.getElementById('user-name').textContent = user.name;
           var email = document.getElementById('user-email'); email.textContent = user.email || ''; email.hidden = !user.email;
           var avatar = document.getElementById('user-avatar');
@@ -121,7 +147,7 @@
           try { msgJson = typeof msg === 'string' ? JSON.parse(msg) : msg; } catch (_error) { return; }
           if (!msgJson || typeof msgJson !== 'object' || msgJson.valid === false || msgJson.error) return;
           var item = document.createElement('li');
-          var sender = document.createElement('strong'); sender.className = 'sender'; sender.textContent = msgJson.nombre || 'Usuario autenticado'; sender.style.color = isValidHexColor(msgJson.color) ? msgJson.color : '#12213b';
+          var sender = document.createElement('strong'); sender.className = 'sender'; sender.textContent = msgJson.nombre || 'Usuario autenticado'; sender.style.color = isReadableSenderColor(msgJson.color) ? msgJson.color : '#12213b';
           item.append(sender, document.createTextNode(': '));
           if (msgJson.tipo === 'image' && isValidHttpUrl(msgJson.url)) { var image = document.createElement('img'); image.src = msgJson.url; image.alt = 'Imagen compartida'; image.className = 'chat-media'; item.append(image); }
           else if (msgJson.tipo === 'video' && /^[a-zA-Z0-9_-]{11}$/.test(msgJson.videoId || '')) { var frame = document.createElement('iframe'); frame.src = 'https://www.youtube.com/embed/' + msgJson.videoId; frame.width = '560'; frame.height = '315'; frame.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'; frame.allowFullscreen = true; frame.className = 'chat-media'; frame.title = 'Video compartido'; item.append(frame); }
@@ -131,13 +157,15 @@
         function connectChat() {
           socket = io();
           socket.on('connect', function () { sendButton.disabled = false; });
+          socket.on('disconnect', function () { setNotice('La conexión con el chat se interrumpió. Espera la reconexión o inicia sesión de nuevo.'); sendButton.disabled = true; });
+          socket.on('reconnect', function () { setNotice(''); sendButton.disabled = false; });
           socket.on('connect_error', function () { setNotice('No fue posible conectar al chat. Cierra sesión e inicia sesión de nuevo.'); sendButton.disabled = true; });
           socket.on('Evento-Mensaje-Server', renderMessage);
         }
         document.getElementById('message-form').addEventListener('submit', function (event) {
           event.preventDefault();
           var rawMessage = messageInput.value;
-          if (rawMessage.trim() === '') { messageInput.value = ''; setNotice('Escriba un mensaje antes de enviarlo.'); return; }
+          if (rawMessage.trim() === '') { messageInput.value = ''; setNotice('Escribe un mensaje antes de enviarlo.'); return; }
           if (rawMessage.length > 280) { setNotice('El mensaje es demasiado largo (máximo 280 caracteres).'); return; }
           if (!socket || !socket.connected) { setNotice('La conexión segura al chat todavía no está disponible.'); return; }
           if (!colorHexTxt) colorHexTxt = getRandomColor();
@@ -145,10 +173,20 @@
           socket.emit('Evento-Mensaje-Server', JSON.stringify({ mensaje: rawMessage, color: colorHexTxt }));
           messageInput.value = ''; setNotice('');
         });
-        fetch('/api/user', { credentials: 'same-origin', cache: 'no-store' })
-          .then(function (response) { return response.ok ? response.json() : null; })
-          .then(function (session) { if (!session || session.authenticated !== true || !session.user || typeof session.user.name !== 'string') { showUnauthenticated(); return; } showAuthenticated(session.user); connectChat(); })
-          .catch(showUnauthenticated);
+        function loadSession() {
+          loading.hidden = false; loading.textContent = 'Comprobando sesión segura…';
+          authNotice.hidden = true; sessionErrorView.hidden = true;
+          fetch('/api/user', { credentials: 'same-origin', cache: 'no-store' })
+            .then(function (response) {
+              if (response.status === 401) return null;
+              if (!response.ok) throw new Error('Session check failed');
+              return response.json();
+            })
+            .then(function (session) { if (!session || session.authenticated !== true || !session.user || typeof session.user.name !== 'string') { showUnauthenticated(); return; } showAuthenticated(session.user); connectChat(); })
+            .catch(showSessionCheckError);
+        }
+        authRetry.addEventListener('click', loadSession);
+        loadSession();
       }());
     </script>
   </body>

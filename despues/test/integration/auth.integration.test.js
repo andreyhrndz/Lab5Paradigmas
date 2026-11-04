@@ -16,7 +16,10 @@ const verifiedUser = {
 // It represents the verified req.oidc context that the public Auth0 middleware
 // supplies after it has completed a real OIDC flow in production.
 function verifiedContextForTests(req, res, next) {
-  if (req.headers['x-test-auth'] === 'callback-error' && req.path === '/callback') {
+  if (
+    (req.headers['x-test-auth'] === 'callback-error' || req.headers['x-test-auth'] === 'callback-cancelled')
+    && req.path === '/callback'
+  ) {
     return next(new Error('Controlled callback failure'));
   }
 
@@ -183,6 +186,18 @@ describe('US-01 Auth0 — HTTP y Socket.IO (Integration)', function () {
 
     assert.strictEqual(response.status, 302);
     assert.strictEqual(response.headers.location, '/?authError=login_failed');
+    assert.strictEqual(response.body.includes('Controlled callback failure'), false);
+  });
+
+  it('3.3. Distingue una cancelación del proveedor y mantiene el reintento en la misma aplicación', async function () {
+    const response = await httpRequest(
+      port,
+      '/callback?error=access_denied',
+      { 'x-test-auth': 'callback-cancelled' },
+    );
+
+    assert.strictEqual(response.status, 302);
+    assert.strictEqual(response.headers.location, '/?authError=login_cancelled');
     assert.strictEqual(response.body.includes('Controlled callback failure'), false);
   });
 

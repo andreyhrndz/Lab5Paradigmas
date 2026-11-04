@@ -7,12 +7,34 @@ test.describe('UNA Chat — interfaz de autenticación', () => {
     await expect(page.getByRole('link', { name: 'Iniciar sesión con Auth0' })).toHaveAttribute('href', '/login');
     await expect(page.locator('#authenticated-view')).toBeHidden();
     await expect(page.locator('#profile')).toBeHidden();
+    await expect(page.locator('#auth-loading')).toHaveAttribute('role', 'status');
   });
 
   test('explica un fallo de callback sin exponer el detalle del proveedor', async ({ page }) => {
     await page.goto('/?authError=login_failed');
     await expect(page.getByRole('status')).toHaveText('No fue posible iniciar sesión. Inténtalo de nuevo.');
     await expect(page.locator('#authenticated-view')).toBeHidden();
+  });
+
+  test('explica la cancelación controlada del proveedor y ofrece volver a intentar', async ({ page }) => {
+    await page.goto('/?authError=login_cancelled');
+    await expect(page.getByRole('status')).toHaveText('Inicio de sesión cancelado. Puedes intentarlo de nuevo.');
+    await expect(page.getByRole('link', { name: 'Iniciar sesión con Auth0' })).toBeVisible();
+  });
+
+  test('distingue una falla transitoria de perfil del estado anónimo y permite reintentar', async ({ page }) => {
+    var requests = 0;
+    await page.route('**/api/user', (route) => {
+      requests += 1;
+      return route.fulfill({ status: 503, body: 'Unavailable' });
+    });
+    await page.goto('/');
+    await expect(page.locator('#session-error-notice')).toHaveText('No fue posible comprobar tu sesión. Inténtalo de nuevo.');
+    await expect(page.getByRole('button', { name: 'Reintentar comprobación de sesión' })).toBeVisible();
+    await expect(page.locator('#unauthenticated-view')).toBeHidden();
+    await expect(page.locator('#session-error-view')).toBeVisible();
+    await page.getByRole('button', { name: 'Reintentar comprobación de sesión' }).click();
+    await expect.poll(() => requests).toBe(2);
   });
 
   test('muestra nombre, email y avatar del contexto de sesión simulado', async ({ page, context }) => {

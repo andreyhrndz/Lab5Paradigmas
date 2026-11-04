@@ -5,7 +5,7 @@ UNA Chat usa Auth0 como cliente OIDC confidencial para que una persona inicie se
 ## Estado verificable
 
 - El flujo real local con Google, consentimiento Auth0, retorno al chat, perfil, mensajes y logout fue comprobado manualmente por el propietario el 2026-10-29.
-- `npm run test:all` ejecutó **53 pruebas unitarias, 24 de integración y 9 E2E: 86/86 aprobadas**.
+- `npm run test:all` ejecutó **53 pruebas unitarias, 25 de integración y 11 E2E: 89/89 aprobadas**.
 - `node --test factory/tests/factory.test.mjs` ejecutó **20/20 aprobadas**.
 - El flujo equivalente en Vercel aún no se ha desplegado ni probado. No debe declararse funcional hasta completar la sección de verificación de producción.
 
@@ -87,7 +87,7 @@ Las copias siguientes fueron redaccionadas para eliminar nombre, correo e inform
 | 6 | HTTP y Socket.IO protegidos | Cubierto por integración: anónimo, cookie falsa, upgrade directo y suplantación rechazados. |
 | 7 | Flujo Vercel | Pendiente de despliegue autorizado y prueba real. |
 | 8 | Variables y secretos | `.env` ignorado; plantilla sin secretos; revisión de archivos publicables limpia. |
-| 9 | Cancelación/error OAuth | Error de callback controlado cubierto por integración/E2E; cancelación real por la persona usuaria sigue pendiente de prueba manual. |
+| 9 | Cancelación/error OAuth | Error y cancelación controlados cubiertos por integración/E2E; cancelación real por la persona usuaria sigue pendiente de prueba manual. |
 
 ## Vercel: preparación y límite de validación
 

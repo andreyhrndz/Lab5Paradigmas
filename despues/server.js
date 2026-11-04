@@ -199,7 +199,10 @@ function createUnaChatServer(options = {}) {
   app.use(function handleAuthCallbackError(error, req, res, next) {
     if (req.path === '/callback') {
       // Do not reflect IdP or state-validation details into the browser.
-      return res.redirect(302, '/?authError=login_failed');
+      const reason = req.query && req.query.error === 'access_denied'
+        ? 'login_cancelled'
+        : 'login_failed';
+      return res.redirect(302, `/?authError=${reason}`);
     }
     return next(error);
   });
