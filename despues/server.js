@@ -121,11 +121,45 @@ function applyBrowserSecurityHeaders(production) {
 }
 
 function hasTrustedSocketOrigin(request, baseURL) {
-  return typeof request.headers.origin === 'string' && request.headers.origin === baseURL;
+  const origin = request.headers.origin;
+  if (typeof origin === 'string') {
+    return origin === baseURL;
+  }
+
+  // Chromium legitimately omits Origin on a same-origin GET polling request.
+  // Accept that narrow browser case only when Fetch Metadata identifies the
+  // request as same-origin *and* the authority equals the configured origin.
+  // An absent Origin by itself is never sufficient to authorize a handshake.
+  if (
+    request.method !== 'GET' ||
+    request.headers['sec-fetch-site'] !== 'same-origin'
+  ) {
+    return false;
+  }
+
+  let expected;
+  try {
+    expected = new URL(baseURL).host.toLowerCase();
+  } catch (_error) {
+    return false;
+  }
+
+  const forwardedHost = request.headers['x-forwarded-host'];
+  const host = typeof forwardedHost === 'string'
+    ? forwardedHost.split(',')[0].trim()
+    : request.headers.host;
+  return typeof host === 'string' && host.toLowerCase() === expected;
 }
 
 function getAuthenticatedMessage(msg, user) {
-  const validatedMsg = validation.validateMessage(msg);
+  let validatedMsg;
+  try {
+    validatedMsg = validation.validateMessage(msg);
+  } catch (_error) {
+    // A malformed event must be rejected without taking down its Socket.IO
+    // handler, even if a future validator implementation regresses.
+    return null;
+  }
 
   let parsed;
   try {
@@ -194,7 +228,10 @@ function createUnaChatServer(options = {}) {
   app.use(
     '/public',
     requiresAuth(),
-    express.static(path.resolve(__dirname, 'public')),
+    // This directory is deliberately not named `public`: Vercel serves a
+    // top-level public/ directory from its CDN before Express, which would
+    // bypass requiresAuth() for these private resources.
+    express.static(path.resolve(__dirname, 'private-assets')),
   );
   app.use(function handleAuthCallbackError(error, req, res, next) {
     if (req.path === '/callback') {
@@ -233,7 +270,17 @@ function createUnaChatServer(options = {}) {
 
   io.on('connection', function(socket) {
     socket.on('Evento-Mensaje-Server', function(msg) {
-      const validatedMsg = getAuthenticatedMessage(msg, socket.data.user);
+      // Re-check the Auth0 context for every privileged event. This prevents
+      // a socket from retaining the user snapshot after its session context
+      // has become unauthenticated (for example, during logout or expiry).
+      const currentUser = getAuthenticatedUser(socket.request);
+      if (!currentUser) {
+        socket.disconnect(true);
+        return;
+      }
+
+      socket.data.user = currentUser;
+      const validatedMsg = getAuthenticatedMessage(msg, currentUser);
       if (!validatedMsg) {
         return;
       }

@@ -281,6 +281,21 @@ describe('US-01 Auth0 — HTTP y Socket.IO (Integration)', function () {
       });
       assert.strictEqual(socket.connected, true);
       socket.disconnect();
+
+      const sameOriginPolling = await connect(productionPort, {
+        'x-test-auth': 'verified',
+        'x-forwarded-host': 'una-chat.example.test',
+        'sec-fetch-site': 'same-origin',
+      });
+      assert.strictEqual(sameOriginPolling.connected, true);
+      sameOriginPolling.disconnect();
+
+      const originlessCrossSite = await rejectedConnection(productionPort, {
+        'x-test-auth': 'verified',
+        'x-forwarded-host': 'una-chat.example.test',
+        'sec-fetch-site': 'cross-site',
+      });
+      assert.ok(originlessCrossSite instanceof Error);
     } finally {
       await new Promise((resolve) => productionRuntime.io.close(resolve));
     }
@@ -305,6 +320,36 @@ describe('US-01 Auth0 — HTTP y Socket.IO (Integration)', function () {
     const message = JSON.parse(await received);
     assert.strictEqual(message.nombre, verifiedUser.name);
     assert.strictEqual(message.mensaje, 'Mensaje con identidad del servidor');
+  });
+
+  it('9.1. Rechaza un payload que sobrescribe hasOwnProperty sin interrumpir el chat', async function () {
+    const socket = await connect(port, { 'x-test-auth': 'verified' });
+    sockets.push(socket);
+
+    const received = new Promise((resolve) => {
+      socket.once('Evento-Mensaje-Server', resolve);
+    });
+    socket.emit(
+      'Evento-Mensaje-Server',
+      JSON.stringify({ hasOwnProperty: null, mensaje: 'Mensaje resistente' }),
+    );
+
+    const message = JSON.parse(await received);
+    assert.strictEqual(message.nombre, verifiedUser.name);
+    assert.strictEqual(message.mensaje, 'Mensaje resistente');
+  });
+
+  it('9.2. Desconecta un socket cuyo contexto Auth0 deja de estar autenticado', async function () {
+    const socket = await connect(port, { 'x-test-auth': 'verified' });
+    sockets.push(socket);
+    const serverSocket = runtime.io.sockets.sockets.get(socket.id);
+    assert.ok(serverSocket);
+    serverSocket.request.oidc.isAuthenticated = () => false;
+
+    const disconnected = new Promise((resolve) => socket.once('disconnect', resolve));
+    socket.emit('Evento-Mensaje-Server', JSON.stringify({ mensaje: 'No debe enviarse' }));
+    await disconnected;
+    assert.strictEqual(socket.connected, false);
   });
 
   it('10. Conserva el saneamiento XSS antes de retransmitir', async function () {

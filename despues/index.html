@@ -54,7 +54,8 @@
     <main class="shell">
       <header class="topbar">
         <a class="brand" href="/" aria-label="Inicio de UNA Chat"><span class="brand-mark">UNA</span> Chat</a>
-        <p class="auth-state" id="auth-loading" role="status" aria-live="polite">Comprobando sesión segura…</p>
+        <p class="auth-state" id="auth-loading">Comprobando sesión segura…</p>
+        <p class="visually-hidden" id="auth-status" role="status" aria-live="polite"></p>
         <section class="profile" id="profile" hidden aria-label="Sesión autenticada">
           <div class="profile-copy"><span class="profile-name" id="user-name"></span><span class="profile-email" id="user-email" hidden></span></div>
           <a class="logout" id="logout-link" href="/logout">Cerrar sesión</a>
@@ -79,7 +80,7 @@
         <ul id="messages" aria-live="polite" aria-label="Mensajes del chat"></ul>
         <form class="composer" id="message-form">
           <label for="m" class="visually-hidden">Mensaje</label>
-          <input id="m" autocomplete="off" placeholder="Escriba un mensaje" aria-describedby="message-notice">
+          <input id="m" autocomplete="off" placeholder="Escribe un mensaje" aria-describedby="message-notice">
           <button type="submit" id="send-message" disabled>Enviar</button>
         </form>
         <p class="notice" id="message-notice" role="status" aria-live="polite"></p>
@@ -103,19 +104,24 @@
 
         function getRandomColor() { var colors = ['#1d4ed8', '#047857', '#b91c1c', '#7e22ce', '#9a3412', '#0f766e']; return colors[Math.floor(Math.random() * colors.length)]; }
         function isValidHexColor(color) { return typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color.trim()); }
-        function isReadableSenderColor(color) {
-          if (!isValidHexColor(color)) return false;
+        function luminanceForHex(color) {
           var value = color.trim().slice(1);
           var channels = [0, 2, 4].map(function (index) { return parseInt(value.slice(index, index + 2), 16) / 255; });
           var linear = channels.map(function (channel) { return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4); });
-          var luminance = (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
-          // Both message backgrounds are pale; require WCAG AA contrast against #eaf3ff.
-          return (0.95 / (luminance + 0.05)) >= 4.5;
+          return (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
+        }
+        function isReadableSenderColor(color) {
+          if (!isValidHexColor(color)) return false;
+          var contrast = (luminanceForHex('#eaf3ff') + 0.05) / (luminanceForHex(color) + 0.05);
+          // The darkest of the message backgrounds is #eaf3ff. Require the
+          // real WCAG AA contrast ratio instead of an approximate luminance.
+          return contrast >= 4.5;
         }
         function isValidHttpUrl(url) { try { var parsed = new URL(url); return parsed.protocol === 'http:' || parsed.protocol === 'https:'; } catch (_error) { return false; } }
         function setNotice(message) { notice.textContent = message || ''; }
         function showUnauthenticated() {
           loading.hidden = true; profile.hidden = true; unauthenticatedView.hidden = false; sessionErrorView.hidden = true; authenticatedView.hidden = true;
+          document.getElementById('auth-status').textContent = 'No hay una sesión autenticada.';
           var authError = new URLSearchParams(window.location.search).get('authError');
           if (authError === 'login_cancelled') {
             authNotice.textContent = 'Inicio de sesión cancelado. Puedes intentarlo de nuevo.';
@@ -130,10 +136,12 @@
         }
         function showSessionCheckError() {
           loading.hidden = true; profile.hidden = true; unauthenticatedView.hidden = true; sessionErrorView.hidden = false; authenticatedView.hidden = true;
+          document.getElementById('auth-status').textContent = 'No fue posible comprobar la sesión.';
           document.getElementById('session-error-notice').textContent = 'No fue posible comprobar tu sesión. Inténtalo de nuevo.';
         }
         function showAuthenticated(user) {
           loading.hidden = true; unauthenticatedView.hidden = true; sessionErrorView.hidden = true; authenticatedView.hidden = false; profile.hidden = false;
+          document.getElementById('auth-status').textContent = 'Sesión autenticada como ' + user.name + '.';
           document.getElementById('user-name').textContent = user.name;
           var email = document.getElementById('user-email'); email.textContent = user.email || ''; email.hidden = !user.email;
           var avatar = document.getElementById('user-avatar');
@@ -156,9 +164,8 @@
         }
         function connectChat() {
           socket = io();
-          socket.on('connect', function () { sendButton.disabled = false; });
+          socket.on('connect', function () { setNotice(''); sendButton.disabled = false; });
           socket.on('disconnect', function () { setNotice('La conexión con el chat se interrumpió. Espera la reconexión o inicia sesión de nuevo.'); sendButton.disabled = true; });
-          socket.on('reconnect', function () { setNotice(''); sendButton.disabled = false; });
           socket.on('connect_error', function () { setNotice('No fue posible conectar al chat. Cierra sesión e inicia sesión de nuevo.'); sendButton.disabled = true; });
           socket.on('Evento-Mensaje-Server', renderMessage);
         }
@@ -186,6 +193,9 @@
             .catch(showSessionCheckError);
         }
         authRetry.addEventListener('click', loadSession);
+        document.getElementById('logout-link').addEventListener('click', function () {
+          if (socket) socket.disconnect();
+        });
         loadSession();
       }());
     </script>

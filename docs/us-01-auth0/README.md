@@ -5,7 +5,7 @@ UNA Chat usa Auth0 como cliente OIDC confidencial para que una persona inicie se
 ## Estado verificable
 
 - El flujo real local con Google, consentimiento Auth0, retorno al chat, perfil, mensajes y logout fue comprobado manualmente por el propietario el 2026-10-29.
-- `npm run test:all` ejecutó **53 pruebas unitarias, 25 de integración y 11 E2E: 89/89 aprobadas**.
+- `npm run test:all` ejecutó **54 pruebas unitarias, 27 de integración y 11 E2E: 92/92 aprobadas**.
 - `node --test factory/tests/factory.test.mjs` ejecutó **20/20 aprobadas**.
 - El flujo equivalente en Vercel aún no se ha desplegado ni probado. No debe declararse funcional hasta completar la sección de verificación de producción.
 
@@ -26,7 +26,7 @@ flowchart LR
 
 `/` sólo sirve la pantalla de acceso sin transcript ni datos privados. `/chat` y `/public` requieren `requiresAuth()`. `/api/user` devuelve únicamente `sub`, nombre visible y, si existen, correo y avatar permitidos desde un `req.oidc` previamente validado; responde con `Cache-Control: no-store`.
 
-Socket.IO exige primero un handshake de **polling HTTP** autenticado. En producción, ese polling exige además un encabezado `Origin` idéntico a `AUTH0_BASE_URL`. El upgrade WebSocket directo, una sesión anónima y una cookie `appSession` falsificada se rechazan. El servidor sustituye cualquier `nombre` enviado por el cliente con la identidad de `socket.data.user`.
+Socket.IO exige primero un handshake de **polling HTTP** autenticado. En producción, acepta un `Origin` idéntico a `AUTH0_BASE_URL`; Chromium puede omitir ese encabezado en un GET de mismo origen, por lo que se admite únicamente el caso con Fetch Metadata `Sec-Fetch-Site: same-origin` y autoridad de host configurada. El upgrade WebSocket directo, una sesión anónima, un polling sin esas pruebas y una cookie `appSession` falsificada se rechazan. En cada evento se vuelve a consultar el contexto Auth0 del request y el servidor sustituye cualquier `nombre` del cliente por esa identidad.
 
 ## Instalación local
 
@@ -63,6 +63,7 @@ No copie valores de `.env` a documentación, capturas, GitHub ni Vercel CLI. `.e
 - `auth()` del SDK administra state, nonce, PKCE, callback y la cookie cifrada; el proyecto no descifra cookies ni valida JWTs de forma artesanal.
 - Cookies de sesión: `HttpOnly`, `SameSite=Lax`, `path=/`, duración absoluta de 7 días y rolling de 24 horas. Bajo HTTPS se usa `Secure` y el prefijo `__Host-`; HTTP se limita a localhost.
 - `requiresAuth()` controla rutas privadas. El perfil se obtiene de `req.oidc.isAuthenticated()` y `req.oidc.user` sólo después de validación del SDK.
+- Los eventos Socket.IO vuelven a comprobar `req.oidc.isAuthenticated()` antes de retransmitirse y desconectan la sesión cuyo contexto ya no es válido. Un payload que redefine `hasOwnProperty` se rechaza de forma segura; ningún método del objeto no confiable se invoca.
 - Las respuestas HTML establecen CSP restrictiva, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, COOP/CORP y HSTS bajo HTTPS de producción. Un error de `/callback` redirige a un aviso genérico de reintento sin reflejar detalles de Auth0.
 - La interfaz usa nodos DOM y `textContent`; URL de multimedia y color se validan. REQ-010, REQ-011 y REQ-012 se comprueban tanto en cliente como servidor.
 - La auditoría `npm audit --json` del 2026-10-29 reportó **0 vulnerabilidades** sobre 213 dependencias resueltas.
@@ -99,9 +100,9 @@ Allowed Logout URLs:   https://DOMINIO
 Allowed Web Origins:   https://DOMINIO
 ```
 
-Vercel anunció disponibilidad general de WebSockets en Functions el 20 de octubre de 2026 y soporte para Socket.IO; esto elimina la incompatibilidad histórica, pero no reemplaza una prueba en el proyecto real. El `vercel.json` actual usa la propiedad `builds`, que Vercel documenta como configuración heredada. Antes de publicar, pruebe un deployment de preview con la configuración actual y el polling autenticado; el servidor no debe aceptar upgrade directo ni desactivar la validación de sesión para adaptarse a Vercel.
+Vercel anunció disponibilidad general de WebSockets en Functions el 20 de octubre de 2026 y soporte para Socket.IO; esto elimina la incompatibilidad histórica, pero no reemplaza una prueba en el proyecto real. `server.js` es el entry point de Node reconocido por el despliegue zero-config; `vercel.json` sólo declara el esquema actual y Fluid Compute, sin el `builds` heredado. Las funciones Vercel sirven `public/` desde CDN antes de Express: por eso los recursos privados viven en `private-assets/` y siguen pasando por `/public` + `requiresAuth()`. Antes de publicar, pruebe un deployment de preview con el polling autenticado; el servidor no debe aceptar upgrade directo ni desactivar la validación de sesión para adaptarse a Vercel.
 
-La arquitectura por cookie stateless no depende de memoria de proceso, por lo que es apta para instancias efímeras. La compatibilidad operacional de Engine.IO polling + upgrade en Vercel sigue **pendiente de prueba de producción**.
+La cookie de sesión es stateless y no depende de memoria de proceso. Sin embargo, el broadcast actual de Socket.IO es local a cada instancia de Function: Vercel puede ubicar clientes en instancias distintas. La comunicación multiinstancia requiere un adaptador compartido (por ejemplo, Redis) y queda fuera de US-01. La compatibilidad operacional de Engine.IO polling + upgrade en Vercel sigue **pendiente de prueba de producción**.
 
 ## Verificación de producción posterior al despliegue
 

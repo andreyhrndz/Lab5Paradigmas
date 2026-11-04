@@ -175,7 +175,10 @@ module.exports = {
     }
 
     // Exigencia de nombre de usuario válido no vacío
-    if (obj.hasOwnProperty('nombre')) {
+    // Do not invoke a method supplied by an untrusted payload. JSON objects
+    // can legitimately contain a `hasOwnProperty` field, including a value
+    // that is not callable.
+    if (Object.prototype.hasOwnProperty.call(obj, 'nombre')) {
       if (typeof obj.nombre !== 'string' || !obj.nombre.trim()) {
         return JSON.stringify({ valid: false, error: 'Nombre de usuario requerido' });
       }
