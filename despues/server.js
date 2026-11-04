@@ -358,13 +358,28 @@ function createUnaChatServer(options = {}) {
 }
 
 let defaultServer;
+let defaultRuntime = null;
+let defaultInitError = null;
+
 try {
-  const defaultRuntime = createUnaChatServer();
+  defaultRuntime = createUnaChatServer();
   defaultServer = defaultRuntime.http;
-} catch (_error) {
-  defaultServer = http.createServer();
+} catch (error) {
+  defaultInitError = error;
+  // Vercel execution contract: if the server cannot initialize due to missing
+  // or invalid configuration, do NOT produce a silent empty server that appears
+  // valid but hangs incoming requests. Fail deterministically with HTTP 500
+  // without leaking sensitive environment values or tokens.
+  defaultServer = http.createServer(function handleUnconfiguredServer(_req, res) {
+    res.writeHead(500, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    res.end('Server configuration error: Authentication configuration is incomplete or invalid.');
+  });
 }
 
+defaultServer.initError = defaultInitError;
 defaultServer.default = defaultServer;
 defaultServer.server = defaultServer;
 defaultServer.createUnaChatServer = createUnaChatServer;
@@ -374,14 +389,19 @@ defaultServer.applyBrowserSecurityHeaders = applyBrowserSecurityHeaders;
 defaultServer.hasTrustedSocketOrigin = hasTrustedSocketOrigin;
 
 if (require.main === module) {
-  try {
-    const port = process.env.PORT || 3000;
-    defaultServer.listen(port, function() {
-      console.log('listening on *:' + port);
-    });
-  } catch (error) {
-    console.error(`Unable to start UNA Chat: ${error.message}`);
+  if (defaultInitError) {
+    console.error(`Unable to start UNA Chat: ${defaultInitError.message}`);
     process.exitCode = 1;
+  } else {
+    try {
+      const port = process.env.PORT || 3000;
+      defaultServer.listen(port, function() {
+        console.log('listening on *:' + port);
+      });
+    } catch (error) {
+      console.error(`Unable to start UNA Chat: ${error.message}`);
+      process.exitCode = 1;
+    }
   }
 }
 

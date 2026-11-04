@@ -5,7 +5,7 @@ UNA Chat usa Auth0 como cliente OIDC confidencial para que una persona inicie se
 ## Estado verificable
 
 - El flujo real local con Google, consentimiento Auth0, retorno al chat, perfil, mensajes y logout fue comprobado manualmente por el propietario el 2026-10-29.
-- `npm run test:all` ejecuta **97 pruebas: 54 unitarias, 32 de integración y 11 E2E: 97/97 aprobadas (0 fallos)**.
+- `npm run test:all` ejecuta **99 pruebas: 54 unitarias, 34 de integración y 11 E2E: 99/99 aprobadas (0 fallos)**.
 - `node --test factory/tests/factory.test.mjs` ejecuta **20/20 aprobadas**.
 - El flujo equivalente en Vercel aún no se ha desplegado ni probado. No debe declararse funcional hasta completar la sección de verificación de producción.
 
@@ -130,14 +130,21 @@ Vercel anunció soporte para WebSockets en Vercel Functions (con Fluid Compute);
 
 ### Infraestructura Compartida Requerida (Solución Mínima Segura)
 
-Para habilitar escalabilidad horizontal multi-instancia en producción en Vercel, la solución estándar y mínima segura consiste en:
+Para habilitar escalabilidad horizontal multi-instancia en producción en Vercel, es indispensable distinguir los distintos problemas arquitectónicos y no asumir que una sola herramienta resuelve todos:
 
-- **Upstash Redis + `@socket.io/redis-adapter`:**
-  - Upstash provee Redis Serverless nativo en Vercel con cifrado TLS obligatorio en tránsito.
-  - Al montar `@socket.io/redis-adapter` en `server.js`, las emisiones `io.emit()` se publican en canales Redis Pub/Sub, distribuyendo los mensajes a todas las instancias activas de Vercel.
-  - Los permisos de socket (`socket_session:<socketId>`) se persisten en Redis con TTL de 30 segundos, permitiendo que cualquier instancia valide la sesión HTTP y renueve el permiso de forma distribuida.
+1. **Retransmisión de Eventos (`io.emit`):**
+   - `@socket.io/redis-adapter` (apoyado en Upstash Redis con TLS) resuelve **únicamente** la distribución de mensajes Socket.IO entre múltiples servidores/lambdas mediante Redis Pub/Sub.
+2. **Afinidad de Handshake (Engine.IO Polling):**
+   - El Redis Adapter **no** resuelve la afinidad de polling. Si las peticiones HTTP iniciales de Engine.IO caen en instancias distintas, el handshake falla con `Session ID unknown`. Para resolverlo se requiere:
+     - Afinidad de sesión (*Session Affinity / Sticky Sessions*) a nivel de enrutador o proxy perimetral de Vercel.
+     - O forzar transporte directo WebSocket (`transports: ['websocket']`) omitiendo el polling.
+3. **Renovación HTTP de Permisos (`/api/socket/session`):**
+   - El Redis Adapter tampoco intercepta ni gestiona peticiones HTTP de Express. La renovación periódica de permisos de socket a través de HTTP requiere:
+     - Un almacén de datos distribuido independiente (por ejemplo, Redis Key-Value / Upstash KV con comandos `SET/GET` y TTL de 30s) donde cualquier instancia pueda consultar y validar `socket_session:<socketId>`.
+     - O enrutamiento con afinidad de sesión hacia la instancia que retiene la conexión del socket.
+
 - **Entorno Actual (Preview Mono-Instancia):**
-  - En entornos de preview de Vercel bajo Fluid Compute con baja concurrencia, una sola instancia atiende las conexiones, permitiendo validar el flujo E2E sin coste adicional de infraestructura externa. La incorporación de Redis queda identificada como el requisito de infraestructura para escalado multi-instancia en producción.
+  - En entornos de preview de Vercel bajo Fluid Compute con baja concurrencia, una sola instancia atiende las conexiones, permitiendo validar el flujo E2E sin infraestructura externa adicional. El aprovisionamiento de Redis Pub/Sub, almacén KV de sesiones de socket y afinidad de red quedan identificados como los requisitos para producción multi-instancia.
 
 ## Verificación de producción posterior al despliegue
 

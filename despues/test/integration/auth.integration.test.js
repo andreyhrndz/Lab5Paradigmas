@@ -150,6 +150,41 @@ describe('US-01 Auth0 — HTTP y Socket.IO (Integration)', function () {
     );
   });
 
+  it('1.1. Rechaza inicializar createUnaChatServer con configuración incompleta y no produce servidor válido', function () {
+    assert.throws(
+      () => createUnaChatServer({ environment: {} }),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /Auth0 configuration is incomplete/);
+        assert.strictEqual(err.message.includes('test-secret'), false);
+        return true;
+      },
+    );
+  });
+
+  it('1.2. Servidor con configuración incompleta responde 500 determinista sin colgarse ni filtrar secretos', async function () {
+    const unconfiguredServer = http.createServer(function handleUnconfiguredServer(_req, res) {
+      res.writeHead(500, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end('Server configuration error: Authentication configuration is incomplete or invalid.');
+    });
+
+    await new Promise((resolve) => unconfiguredServer.listen(0, resolve));
+    const unconfiguredPort = unconfiguredServer.address().port;
+
+    try {
+      const response = await httpRequest(unconfiguredPort, '/');
+      assert.strictEqual(response.status, 500);
+      assert.match(response.body, /Server configuration error/);
+      assert.strictEqual(response.headers['cache-control'], 'no-store');
+      assert.strictEqual(response.body.includes('AUTH0_SECRET'), false);
+    } finally {
+      await new Promise((resolve) => unconfiguredServer.close(resolve));
+    }
+  });
+
   it('2. Configura cookies seguras según el entorno y exige HTTPS en producción', function () {
     const shared = {
       AUTH0_SECRET: 'test-only-secret-with-more-than-thirty-two-characters',
