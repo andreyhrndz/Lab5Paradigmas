@@ -21,6 +21,10 @@
 ## Acceso Rápido y Enlaces Principales
 
 - 🚀 **Aplicación en Producción (Vercel):** [https://lab5-paradigmas-ten.vercel.app/](https://lab5-paradigmas-ten.vercel.app/)
+- 🌐 **Despliegue Oficial en Render:** [https://una-chat-service.onrender.com](https://una-chat-service.onrender.com) *(o URL del Web Service en Render)*
+- ⚙️ **Informe Técnico de CI/CD (GitHub Actions + Render):** [docs/lab-github-actions-render/README.md](docs/lab-github-actions-render/README.md)
+- 📊 **Evidencias de Quality Gate y Bloqueo por Pruebas:** [docs/lab-github-actions-render/EVIDENCIAS.md](docs/lab-github-actions-render/EVIDENCIAS.md)
+- 🤖 **Workflow de Despliegue:** [.github/workflows/deploy.yml](.github/workflows/deploy.yml)
 - 📑 **Documento Maestro de Entrega:** [docs/ENTREGA-LABORATORIOS-5-Y-6.md](docs/ENTREGA-LABORATORIOS-5-Y-6.md)
 - 🧠 **Informe Técnico del Laboratorio 6 (Memoria y Harness):** [docs/lab6/README.md](docs/lab6/README.md)
 - 🔐 **Especificación Técnica de US-01 (Auth0 Social OAuth):** [docs/us-01-auth0/README.md](docs/us-01-auth0/README.md)
@@ -52,6 +56,12 @@ Este repositorio reúne y consolida la evolución técnica integral de **UNA Cha
 5. **Despliegue Serverless en Vercel:** Soporte para WebSocket Functions con Fluid Compute, file tracing con `functions.includeFiles` en `vercel.json` y streaming controlado de assets privados bajo autenticación.
 
 ---
+
+### Fase 3: Laboratorio Introductorio — Despliegue con GitHub Actions y Render (CI/CD con Bloqueo por Pruebas)
+1. **Pipeline de Integración y Despliegue Continuo:** Implementación de [.github/workflows/deploy.yml](.github/workflows/deploy.yml) sobre Node.js 24 y Ubuntu Latest.
+2. **Quality Gate Bloqueante:** Validación automatizada y hermética de las 105 pruebas (`npm run test:all`) que impide cualquier despliegue ante fallos.
+3. **Invocación Segura a Render:** Integración con Deploy Hooks de Render mediante el secreto seguro `RENDER_DEPLOY_HOOK_URL` pasando el SHA auditado (`ref=${GITHUB_SHA}`).
+4. **Evidencias Auténticas de Quality Gate:** Demostración en dos ejecuciones de CI (aprobada con despliegue y fallida con bloqueo estricto).
 
 ## 2. Estructura del Repositorio
 
@@ -228,6 +238,8 @@ npm run test:all
 
 ## 6. Documentación Técnica de Referencia
 
+- [Informe Técnico de CI/CD (GitHub Actions + Render)](docs/lab-github-actions-render/README.md)
+- [Evidencias de Quality Gate y Bloqueo de Despliegue](docs/lab-github-actions-render/EVIDENCIAS.md)
 - [Documento Maestro de Entrega](docs/ENTREGA-LABORATORIOS-5-Y-6.md)
 - [Informe Técnico del Laboratorio 6 (Memoria, Harness y US-01)](docs/lab6/README.md)
 - [Guía de Arquitectura de US-01 Auth0](docs/us-01-auth0/README.md)
